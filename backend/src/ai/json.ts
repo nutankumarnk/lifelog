@@ -17,48 +17,54 @@ function stripFences(text: string): string {
 /**
  * Returns the first balanced `{...}` or `[...]` block, respecting string
  * literals and escapes so braces inside text do not confuse the scan.
+ *
+ * A stack is used rather than a single depth counter because objects and arrays
+ * interleave, and a truncated response has to be closed in the right order.
  */
 function extractBalanced(text: string): string | null {
   const startIndex = text.search(/[{[]/);
   if (startIndex === -1) return null;
 
-  const opener = text[startIndex];
-  const closer = opener === '{' ? '}' : ']';
-  let depth = 0;
+  const stack: string[] = [];
   let inString = false;
   let escaped = false;
 
   for (let i = startIndex; i < text.length; i += 1) {
-    const char = text[i];
+    const char = text[i]!;
 
     if (escaped) {
       escaped = false;
       continue;
     }
-    if (char === '\\') {
-      escaped = true;
+    if (inString) {
+      if (char === '\\') escaped = true;
+      else if (char === '"') inString = false;
       continue;
     }
     if (char === '"') {
-      inString = !inString;
+      inString = true;
       continue;
     }
-    if (inString) continue;
 
-    if (char === opener) depth += 1;
-    else if (char === closer) {
-      depth -= 1;
-      if (depth === 0) return text.slice(startIndex, i + 1);
+    if (char === '{' || char === '[') {
+      stack.push(char === '{' ? '}' : ']');
+      continue;
+    }
+    if (char === '}' || char === ']') {
+      stack.pop();
+      if (stack.length === 0) return text.slice(startIndex, i + 1);
     }
   }
 
-  // Unbalanced: the model was probably cut off by a token limit. Close what is
-  // open so a partially-complete analysis is still usable.
-  if (depth > 0) {
-    const suffix = closer.repeat(depth);
-    return `${text.slice(startIndex)}${inString ? '"' : ''}${suffix}`;
-  }
-  return null;
+  if (stack.length === 0) return null;
+
+  // Truncated, most likely by a token limit. Close what is still open, in
+  // reverse order, so a partially complete analysis is still usable. A trailing
+  // fragment such as `"ti` is dropped rather than guessed at.
+  let body = text.slice(startIndex);
+  if (inString) body = `${body}"`;
+  const suffix = [...stack].reverse().join('');
+  return `${body}${suffix}`;
 }
 
 /** Removes trailing commas before a closing brace or bracket. */

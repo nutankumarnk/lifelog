@@ -71,8 +71,8 @@ const TEMPORAL_PATTERNS: RegExp[] = [
   /\bday before yesterday\b/i,
   /\bthe day after tomorrow\b/i,
   /\b(?:next|last|this|coming|past|previous)\s+(?:week|month|year|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i,
-  /\b(?:in|after)\s+\d+\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\b/i,
-  /\b\d+\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/i,
+  /\b(?:in|after)\s+(?:\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple of|few)\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\b/i,
+  /\b(?:\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple of|few)\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/i,
   /\b(?:every|each)\s+(?:day|morning|evening|night|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:on|by|before|after|until|till)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?\b/i,
@@ -111,6 +111,30 @@ export function findTemporalPhrases(text: string): TemporalMatch[] {
   }
 
   return matches.sort((a, b) => a.start - b.start);
+}
+
+const NUMBER_WORDS: Record<string, number> = {
+  a: 1,
+  an: 1,
+  one: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+  eleven: 11,
+  twelve: 12,
+};
+
+/** Parses a digit or a spelled-out number. Vague counts return null. */
+function parseCount(token: string): number | null {
+  const digits = Number.parseInt(token, 10);
+  if (Number.isFinite(digits)) return digits;
+  return NUMBER_WORDS[token.toLowerCase()] ?? null;
 }
 
 function startOfDay(date: Date): Date {
@@ -228,12 +252,20 @@ export function resolvePhrase(phrase: string, now: Date): Resolution {
   }
 
   // --- "in N units" / "N units ago" --------------------------------------
-  const relative = /^(?:in|after)\s+(\d+)\s+(minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)$/.exec(text);
-  const ago = /^(\d+)\s+(minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s+ago$/.exec(text);
+  const COUNT = String.raw`\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple of|few`;
+  const UNIT = String.raw`minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years`;
+  const relative = new RegExp(`^(?:in|after)\\s+(${COUNT})\\s+(${UNIT})$`).exec(text);
+  const ago = new RegExp(`^(${COUNT})\\s+(${UNIT})\\s+ago$`).exec(text);
   const offsetMatch = relative ?? ago;
+
   if (offsetMatch?.[1] && offsetMatch[2]) {
     const sign = ago ? -1 : 1;
-    const amount = Number.parseInt(offsetMatch[1], 10) * sign;
+    const count = parseCount(offsetMatch[1]);
+    // "a few days" has no definite magnitude, so no date is produced.
+    if (count === null) {
+      return { ...UNRESOLVED, precision: 'RELATIVE', tense: sign > 0 ? 'FUTURE' : 'PAST', confidence: 0.35 };
+    }
+    const amount = count * sign;
     const unit = offsetMatch[2].replace(/s$/, '');
     const base = new Date(now);
 
@@ -437,16 +469,51 @@ export function interpretTemporal(
 }
 
 /**
+ * Irregular past-tense verbs. English's most common verbs are exactly the ones
+ * that do not end in "-ed", so without this list the regular-verb rule below
+ * misses most everyday sentences ("I bought", "I met", "I told her").
+ */
+const IRREGULAR_PAST = [
+  'was', 'were', 'had', 'did', 'went', 'met', 'saw', 'ate', 'got', 'came', 'took', 'made',
+  'felt', 'ran', 'sat', 'slept', 'woke', 'left', 'held', 'paid', 'bought', 'sold', 'gave',
+  'wrote', 'found', 'lost', 'won', 'taught', 'brought', 'caught', 'built', 'sent', 'spent',
+  'told', 'thought', 'knew', 'grew', 'drove', 'flew', 'drank', 'spoke', 'broke', 'chose',
+  'began', 'became', 'heard', 'read', 'said', 'stood', 'understood', 'wore', 'won',
+];
+
+/**
  * Infers tense from verb morphology when no temporal phrase is present.
  * Weak on purpose — it only nudges classification, never sets a date.
+ *
+ * The check order matters. Many predicate adjectives end in "-ed" ("tired",
+ * "worried", "excited"), so the present copula has to be examined before the
+ * regular past-tense rule, or "I am tired" reads as a past event.
  */
 export function inferTenseFromGrammar(text: string): Tense {
   const lower = text.toLowerCase();
-  if (/\b(will|shall|gonna|going to|am going to|planning to|plan to)\b/.test(lower)) return 'FUTURE';
-  if (/\b(was|were|had|did|went|met|saw|ate|got|came|took|made|felt|finished|visited|attended)\b/.test(lower)) {
-    return 'PAST';
+
+  if (/\b(will|shall|gonna|going to|am going to|planning to|plan to|about to)\b/.test(lower)) {
+    return 'FUTURE';
   }
-  if (/\b\w+ed\b/.test(lower) && !/\b(need|needed)\b/.test(lower)) return 'PAST';
-  if (/\b(am|is|are|have|has|feel|feeling|currently|now)\b/.test(lower)) return 'PRESENT';
+  if (new RegExp(`\\b(?:${IRREGULAR_PAST.join('|')})\\b`).test(lower)) return 'PAST';
+  if (/\b(?:am|is|are|'m|'re|feel|feeling|currently|nowadays)\b/.test(lower)) return 'PRESENT';
+  // Regular past tense, excluding words that only look like it.
+  if (/\b\w{3,}ed\b/.test(lower) && !/\b(need|needed|indeed)\b/.test(lower)) return 'PAST';
+  if (/\b(?:have|has|now)\b/.test(lower)) return 'PRESENT';
   return 'UNSPECIFIED';
+}
+
+/**
+ * Combines a resolved phrase's tense with the sentence's grammatical tense.
+ *
+ * The phrase supplies the date; the grammar supplies the direction. "Today I
+ * visited the museum" is dated today but is unambiguously a past event, and
+ * "kal" is dateless until the grammar around it says which way it points.
+ */
+export function reconcileTense(phraseTense: Tense, grammarTense: Tense): Tense {
+  if (phraseTense === 'UNSPECIFIED') return grammarTense;
+  if (grammarTense === 'UNSPECIFIED') return phraseTense;
+  // A same-day phrase carries no direction of its own, so grammar decides.
+  if (phraseTense === 'PRESENT' && grammarTense !== 'PRESENT') return grammarTense;
+  return phraseTense;
 }

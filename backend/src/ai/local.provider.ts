@@ -22,7 +22,12 @@
  */
 import type { AiProvider, AnalysisRequest, ProviderResult } from './provider.js';
 import { segmentConversation } from '../intelligence/segment.js';
-import { findTemporalPhrases, inferTenseFromGrammar, resolvePhrase } from '../intelligence/temporal.js';
+import {
+  findTemporalPhrases,
+  inferTenseFromGrammar,
+  reconcileTense,
+  resolvePhrase,
+} from '../intelligence/temporal.js';
 import {
   CORRECTION_MARKERS,
   DECISION_MARKERS,
@@ -88,13 +93,19 @@ function findProperNouns(text: string, offset: number): Array<{ name: string; st
 
 /** Guesses an entity kind from the words immediately before the mention. */
 function guessKind(fullText: string, start: number, name: string): string {
-  const before = fullText.slice(Math.max(0, start - 24), start).toLowerCase();
+  const before = fullText.slice(Math.max(0, start - 28), start).toLowerCase();
   const after = fullText.slice(start + name.length, start + name.length + 20).toLowerCase();
 
-  if (/\b(?:in|at|to|from|near|around|visited|reached|arrived in|flew to|moved to)\s+$/.test(before)) {
+  // A bare "to"/"from" is too weak on its own — "switch from Notion to
+  // Obsidian" is not travel. Require a locative preposition or a motion verb,
+  // allowing an intervening determiner ("visited the Sabarmati Ashram").
+  if (/\b(?:in|at|near|around|inside|outside|visited|reached|toured|explored)\s+(?:the\s+|a\s+)?$/.test(before)) {
     return 'PLACE';
   }
-  if (/\b(?:with|met|meet|meeting|saw|called|texted|told|asked|from|and)\s+$/.test(before)) return 'PERSON';
+  if (/\b(?:arrived in|flew to|moved to|drove to|travelled to|traveled to|went to|flying to|going to)\s+(?:the\s+)?$/.test(before)) {
+    return 'PLACE';
+  }
+  if (/\b(?:with|met|meet|meeting|saw|called|texted|told|asked|and)\s+$/.test(before)) return 'PERSON';
   if (/\b(?:my|our)\s+(?:friend|brother|sister|mother|father|mom|dad|boss|manager|colleague|doctor|dentist|wife|husband|cousin|uncle|aunt)\s+$/.test(before)) {
     return 'PERSON';
   }
@@ -250,8 +261,7 @@ export class LocalRuleProvider implements AiProvider {
         }
         const resolution = resolvePhrase(phrase.phrase, now);
         return {
-          // A phrase that cannot pick a direction ("kal") defers to grammar.
-          tense: resolution.tense === 'UNSPECIFIED' ? grammarTense : resolution.tense,
+          tense: reconcileTense(resolution.tense, grammarTense),
           raw: phrase.phrase,
           resolved: resolution.resolved,
           resolved_end: resolution.resolvedEnd,
@@ -295,14 +305,14 @@ export class LocalRuleProvider implements AiProvider {
       const tense = String(temporal.tense);
 
       if (isReminder) {
+        // Only the reminder is recorded. The action inside it ("call the
+        // dentist") is the reminder's payload, not a second obligation — and
+        // emitting both would show the user the same thing twice.
         pushItem(
           'REMINDER',
           { explicit: true, trigger_at: temporal.resolved ?? null, status: 'OPEN' },
           0.85,
         );
-        // A reminder is a scheduling wrapper around an action, so the action is
-        // recorded as a task too. Phase 3 will link them explicitly.
-        pushItem('TASK', { status: 'OPEN', priority: 'NORMAL' }, 0.7);
       } else if (isTask) {
         pushItem('TASK', { status: 'OPEN', priority: /\b(urgent|asap|immediately)\b/i.test(lower) ? 'URGENT' : 'NORMAL' }, 0.8);
       }
@@ -315,9 +325,9 @@ export class LocalRuleProvider implements AiProvider {
         pushItem('FEELING', { ...emotion, about: null }, 0.75);
       }
 
-      // Events and memories. A segment already captured as a task/reminder is
-      // not re-recorded as an event unless it also describes something concrete.
-      const alreadyActionable = isReminder || isTask;
+      // Events and memories. A segment already recorded as a task, reminder or
+      // decision is not re-recorded as an event describing the same span.
+      const alreadyActionable = isReminder || isTask || isDecision;
 
       if (tense === 'FUTURE' && !alreadyActionable && (isPlan || temporalPhrases.length > 0)) {
         pushItem('FUTURE_EVENT', {}, temporalPhrases.length > 0 ? 0.8 : 0.6);

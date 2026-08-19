@@ -63,7 +63,6 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
     },
     // Reject oversized bodies at the transport layer, before any parsing.
     bodyLimit: config.MAX_INPUT_CHARS * 4 + 4096,
-    disableRequestLogging: false,
     trustProxy: config.isProduction,
   });
 

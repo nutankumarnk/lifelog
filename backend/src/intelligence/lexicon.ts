@@ -362,6 +362,12 @@ export const ENTITY_STOPWORDS = new Set([
   'tonight',
   'now',
   'later',
+  // Hinglish temporal words. Without these, "Kal" at the start of a sentence
+  // is captured as a proper noun.
+  'kal',
+  'aaj',
+  'parso',
+  'abhi',
   'monday',
   'tuesday',
   'wednesday',

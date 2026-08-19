@@ -15,7 +15,7 @@
  */
 import type { Item, Warning } from '../schemas/analysis.schema.js';
 import { EMOTION_LEXICON, REMINDER_MARKERS, TASK_MARKERS, containsAny } from './lexicon.js';
-import { inferTenseFromGrammar, resolvePhrase } from './temporal.js';
+import { inferTenseFromGrammar, reconcileTense, resolvePhrase } from './temporal.js';
 
 export interface ClassificationContext {
   /** The full conversation, used to check wording around an item. */
@@ -56,9 +56,9 @@ export function resolveItemTemporals(items: Item[], context: ClassificationConte
 
     item.temporal = {
       ...item.temporal,
-      // An ambiguous phrase ("kal" is both yesterday and tomorrow) defers to
-      // the surrounding grammar rather than resolving to a coin-flip date.
-      tense: resolution.tense === 'UNSPECIFIED' ? grammarTense : resolution.tense,
+      // The phrase supplies the date, the grammar supplies the direction —
+      // "kal" is directionless, and "today I visited" is dated today but past.
+      tense: reconcileTense(resolution.tense, grammarTense),
       resolved: resolution.resolved,
       resolved_end: resolution.resolvedEnd,
       precision: resolution.precision,

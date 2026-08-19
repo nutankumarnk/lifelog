@@ -161,6 +161,13 @@ export async function understandConversation(
     warnings.push(...result.warnings);
   }
 
+  // Classification can create duplicates that did not exist before it ran — a
+  // TASK promoted to REMINDER can collide with a REMINDER on the same span. So
+  // deduplication runs again, after types have settled.
+  const settled = deduplicateItems(items);
+  items = settled.items;
+  warnings.push(...settled.warnings);
+
   // Attach each item to the segment its span falls inside.
   for (const item of items) {
     if (item.source_span) {

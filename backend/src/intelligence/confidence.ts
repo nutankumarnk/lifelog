@@ -22,8 +22,17 @@ export interface CalibrationContext {
 /** Confidence below this is worth showing to the user as uncertain. */
 export const LOW_CONFIDENCE_THRESHOLD = 0.45;
 
+/**
+ * Nothing is ever reported as certain.
+ *
+ * Extraction is an interpretation of ambiguous natural language, and a 1.0 in
+ * the UI would invite a user to stop checking. The conversation text is the
+ * only thing Lifelog treats as certain, and it is stored separately.
+ */
+export const MAX_CONFIDENCE = 0.95;
+
 function clamp(value: number): number {
-  return Math.min(1, Math.max(0.05, value));
+  return Math.min(MAX_CONFIDENCE, Math.max(0.05, value));
 }
 
 function calibrateItem(item: Item, context: CalibrationContext): number {
