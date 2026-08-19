@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------------
+# Dependencies & build output
+# ---------------------------------------------------------------------------
+node_modules/
+dist/
+build/
+coverage/
+*.tsbuildinfo
+
+# ---------------------------------------------------------------------------
+# SECRETS — never commit these.
+# See docs/security-checklist.md and secrets/API-KEYS.example.md
+# ---------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+secrets/*
+!secrets/README.md
+!secrets/API-KEYS.example.md
+!secrets/.gitkeep
+*.pem
+*.key
+*.p12
+*.pfx
+*credentials*.json
+!package-lock.json
+
+# ---------------------------------------------------------------------------
+# Local tooling noise
+# ---------------------------------------------------------------------------
+.DS_Store
+*.log
+logs/
+.vscode/
+.idea/
+tmp/
+.pgdata/

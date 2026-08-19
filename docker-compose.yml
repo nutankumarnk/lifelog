@@ -1,0 +1,34 @@
+# Local development infrastructure for Lifelog Phase 1.
+#
+# Phase 1 only needs PostgreSQL. No Redis, no queue, no object storage — those
+# would be unused dependencies today. See docs/decision.md ("Why not Redis in
+# Phase 1?").
+#
+# Usage:
+#   docker compose up -d postgres
+#   npm run db:migrate
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lifelog-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-lifelog}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lifelog}
+      POSTGRES_DB: ${POSTGRES_DB:-lifelog}
+    ports:
+      # Non-default host port so a developer's other Postgres instances keep working.
+      - '${POSTGRES_PORT:-5434}:5432'
+    volumes:
+      - lifelog-pgdata:/var/lib/postgresql/data
+      - ./scripts/postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-lifelog} -d ${POSTGRES_DB:-lifelog}']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  lifelog-pgdata:
+    name: lifelog-pgdata
