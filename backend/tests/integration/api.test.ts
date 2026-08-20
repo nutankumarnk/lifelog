@@ -137,7 +137,7 @@ describe('POST /api/v1/conversations/analyze', () => {
     expect(row!.provider).toBe('local');
     expect(row!.model).toBe('lifelog-rule-engine-v1');
     expect(row!.degraded).toBe(false);
-    expect(row!.schemaVersion).toBe('1.0.0');
+    expect(row!.schemaVersion).toBe('1.1.0');
   });
 
   it('resolves relative dates against a client-supplied timestamp', async () => {

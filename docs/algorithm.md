@@ -41,24 +41,28 @@ And then a second rule governs the split:
 
 ## The pipeline
 
-Twelve stages, in this order. The order is a contract —
+Stages, in this order. The order is a contract —
 `backend/src/intelligence/pipeline.ts`.
 
 ```
- 1. Segment              split text, preserve offsets
- 2. Ask the provider     one model call, with retry and failover
- 3. Normalise            repair loose output into the strict shape
- 4. Ground               reject anything the user did not write
- 5. Deduplicate          merge items covering the same span and type
- 6. Resolve time         raw phrase → date, in code
- 7. Task/reminder rule   enforce the product distinction
- 8. Reconcile type       make type agree with resolved tense
- 9. Enrich feelings      fill sentiment and intensity
-10. Prune                drop empty and redundant facts
-    (deduplicate again — classification can create new collisions)
-11. Missing info + follow-up
-12. Calibrate + validate
+ 1. Segment                 split text, preserve offsets
+ 2. Algorithm draft         local rule engine always runs first
+ 3. Normalise → ground → classify (on the draft)
+ 4. Reminder / Task enrich  grammatical display_text; source_text untouched
+ 5. Stance + gaps + impact  first-hand behavior; inferred emotional impact
+ 6. Gate                    high-confidence draft with no gaps → skip hosted AI
+ 7. AI teacher (optional)   Gemma fills gaps only (teacher prompt), or full extract
+ 8. Reconcile               prefer grounded algorithm; accept grounded AI patches
+ 9. Pattern learn           update pattern_weights / lexicon proposals (not source files)
+10. Missing info + follow-up
+11. Calibrate + validate
 ```
+
+**Domain modules** (`backend/src/domain/`): Reminder and Task own typed details and
+display sentences. Person / Event modules will follow the same pattern later.
+
+**Relearn guardrail:** disagreements update runtime weights and propose lexicon
+markers. Lifelog never auto-edits its own TypeScript.
 
 Grounding runs before classification because classifying a fabricated item
 wastes work and risks keeping it. Calibration runs last because it scores

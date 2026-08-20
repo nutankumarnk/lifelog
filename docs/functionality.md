@@ -71,10 +71,14 @@ each one means.
 | `PAST_EVENT` | IMPLEMENTED | |
 | `PRESENT_FACT` | IMPLEMENTED | Empty and restated-obligation facts are pruned |
 | `FUTURE_EVENT` | IMPLEMENTED | |
-| `TASK` | IMPLEMENTED | With status and priority |
-| `REMINDER` | IMPLEMENTED | Only when the user explicitly asked to be reminded |
+| `TASK` | IMPLEMENTED | With status, priority, and grammatical `display_text` |
+| `REMINDER` | IMPLEMENTED | Only when the user explicitly asked to be reminded; grammatical `display_text` |
 | `DECISION` | IMPLEMENTED | With alternatives when the user mentioned any |
 | `FEELING` | IMPLEMENTED | With emotion word, sentiment and intensity |
+| Behavior stance | IMPLEMENTED | First-hand message stance (`VENT`/`PLAN`/…), not a clinical profile |
+| Inferred emotional impact | IMPLEMENTED | Separate from FEELING; always `inferred: true` with basis spans |
+| Algorithm draft + AI teacher | IMPLEMENTED | Local draft first; Gemma fills gaps; code reconciles |
+| Pattern-weight relearn | IMPLEMENTED | Runtime weights + lexicon proposals; never auto-edits source |
 | One sentence → several items | IMPLEMENTED | "I met Arun yesterday and I need to send him the file" yields a past event, a memory and a task |
 | Task/reminder distinction enforced in code | IMPLEMENTED | A model-labelled reminder with no request wording is demoted to a task, and vice versa. Recorded as a warning. |
 | Item completion, editing, deletion | NOT IMPLEMENTED | Phase 3. |

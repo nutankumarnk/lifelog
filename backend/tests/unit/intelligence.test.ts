@@ -408,14 +408,25 @@ describe('follow-up restraint', () => {
 
 describe('confidence calibration', () => {
   const baseAnalysis = () => ({
-    schema_version: '1.0.0',
+    schema_version: '1.1.0',
     intent: 'LOG' as const,
     intent_confidence: 0.8,
+    stance: 'LOG' as const,
+    stance_confidence: 0.7,
     language: 'en',
     summary: '',
     segments: [],
     entities: [],
     items: [makeItem({ confidence: 0.9 })],
+    emotional_impact: [],
+    gaps: [],
+    algorithm_confidence: 0.7,
+    reconciliation: {
+      used_ai_teacher: false,
+      skipped_ai: false,
+      disagreement_count: 0,
+      winners: [],
+    },
     missing_information: [],
     follow_up: null,
     warnings: [],

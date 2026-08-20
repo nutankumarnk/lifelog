@@ -13,7 +13,7 @@
 import { z } from 'zod';
 
 /** Bumped whenever the analysis shape changes in a non-additive way. */
-export const ANALYSIS_SCHEMA_VERSION = '1.0.0';
+export const ANALYSIS_SCHEMA_VERSION = '1.1.0';
 
 // ---------------------------------------------------------------------------
 // Enumerations
@@ -35,6 +35,22 @@ export const IntentEnum = z.enum([
   'UNKNOWN', // Genuinely unclear. Never guess to avoid this value.
 ]);
 export type Intent = z.infer<typeof IntentEnum>;
+
+/**
+ * First-hand behavior stance for *this message* — not a clinical or lasting
+ * personality label. Soft archetype of what the user is doing right now.
+ */
+export const StanceEnum = z.enum([
+  'VENT',
+  'PLAN',
+  'DECIDE',
+  'REQUEST_HELP',
+  'LOG',
+  'SOCIAL',
+  'CORRECT',
+  'UNKNOWN',
+]);
+export type Stance = z.infer<typeof StanceEnum>;
 
 /** The kinds of structured life information Phase 1 extracts. */
 export const ItemTypeEnum = z.enum([
@@ -160,6 +176,8 @@ export const ItemDetailsSchema = z
     // reminded, as opposed to Lifelog inferring it. See docs/algorithm.md.
     explicit: z.boolean().optional(),
     trigger_at: z.string().nullable().optional(),
+    /** Grammatical display sentence for UI. Never replaces source_text. */
+    display_text: z.string().optional(),
     // FEELING
     emotion: z.string().optional(),
     sentiment: SentimentEnum.optional(),
@@ -172,6 +190,38 @@ export const ItemDetailsSchema = z
   })
   .passthrough();
 export type ItemDetails = z.infer<typeof ItemDetailsSchema>;
+
+/**
+ * Inferred emotional impact — always distinct from expressed FEELING items.
+ * Must carry `inferred: true` and basis spans into the user text.
+ */
+export const EmotionalImpactSchema = z.object({
+  valence: SentimentEnum,
+  intensity: Confidence,
+  about_entity_ids: z.array(z.string()).default([]),
+  basis_spans: z.array(SourceSpanSchema).default([]),
+  summary: z.string().default(''),
+  inferred: z.literal(true),
+  confidence: Confidence.default(0.4),
+});
+export type EmotionalImpact = z.infer<typeof EmotionalImpactSchema>;
+
+/** A gap the algorithm could not resolve confidently. */
+export const AnalysisGapSchema = z.object({
+  code: z.string(),
+  message: z.string(),
+  about_item_id: z.string().nullable().default(null),
+});
+export type AnalysisGap = z.infer<typeof AnalysisGapSchema>;
+
+/** How algorithm draft and AI teacher were combined. */
+export const ReconciliationSchema = z.object({
+  used_ai_teacher: z.boolean().default(false),
+  skipped_ai: z.boolean().default(false),
+  disagreement_count: z.number().int().min(0).default(0),
+  winners: z.array(z.string()).default([]),
+});
+export type Reconciliation = z.infer<typeof ReconciliationSchema>;
 
 /**
  * One meaningful piece of life information extracted from the conversation.
@@ -247,12 +297,27 @@ export const AnalysisSchema = z.object({
   schema_version: z.string().default(ANALYSIS_SCHEMA_VERSION),
   intent: IntentEnum,
   intent_confidence: Confidence.default(0.5),
+  /** First-hand behavior stance for this message only. */
+  stance: StanceEnum.default('UNKNOWN'),
+  stance_confidence: Confidence.default(0.5),
   /** BCP-47-ish language tag, or "mixed" for code-switched input. */
   language: z.string().default('und'),
   summary: z.string().default(''),
   segments: z.array(SegmentSchema).default([]),
   entities: z.array(EntitySchema).default([]),
   items: z.array(ItemSchema).default([]),
+  /** Inferred impacts only — expressed emotion lives as FEELING items. */
+  emotional_impact: z.array(EmotionalImpactSchema).default([]),
+  /** What the algorithm could not resolve before / after the teacher. */
+  gaps: z.array(AnalysisGapSchema).default([]),
+  /** Overall confidence in the algorithm draft before reconciliation. */
+  algorithm_confidence: Confidence.default(0.5),
+  reconciliation: ReconciliationSchema.default({
+    used_ai_teacher: false,
+    skipped_ai: false,
+    disagreement_count: 0,
+    winners: [],
+  }),
   missing_information: z.array(MissingInfoSchema).default([]),
   follow_up: FollowUpSchema.nullable().default(null),
   warnings: z.array(WarningSchema).default([]),

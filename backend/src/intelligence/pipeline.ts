@@ -1,18 +1,28 @@
 /**
  * The Lifelog intelligence pipeline.
  *
- * This is where Lifelog's own reasoning lives. The AI provider contributes one
- * step in the middle; every decision that defines the product happens here, in
- * code Lifelog owns and can test without a network call.
+ *   algorithm draft → enrich Reminder/Task → stance / gaps / impact
+ *     → (optional) Gemma teacher for gaps → reconcile → calibrate → validate
  *
- *   segment → prompt → [AI provider] → normalise → ground → deduplicate
- *           → resolve time → classify → detect gaps → calibrate → validate
- *
- * Read top to bottom: each stage is a named function in its own module, and the
- * order is the contract. See docs/algorithm.md and docs/architecture.md.
+ * When the algorithm draft is high-confidence with no gaps, the hosted model is
+ * skipped. Mock/local primaries still run as the extraction source so tests and
+ * offline mode keep working. See docs/algorithm.md.
  */
+import { LocalRuleProvider } from '../ai/local.provider.js';
 import { runProviders, type AiRuntimeOptions, type ProviderAttempt } from '../ai/registry.js';
-import { AnalysisSchema, ANALYSIS_SCHEMA_VERSION, type Analysis, type Warning } from '../schemas/analysis.schema.js';
+import { enrichActionItems } from '../domain/action-items.js';
+import { loadConfig } from '../config/env.js';
+import {
+  AnalysisSchema,
+  ANALYSIS_SCHEMA_VERSION,
+  type Analysis,
+  type AnalysisGap,
+  type EmotionalImpact,
+  type Entity,
+  type Intent,
+  type Item,
+  type Warning,
+} from '../schemas/analysis.schema.js';
 import {
   enforceTaskReminderDistinction,
   enrichFeelings,
@@ -22,7 +32,9 @@ import {
   type ClassificationContext,
 } from './classify.js';
 import { calibrate } from './confidence.js';
+import { inferEmotionalImpact } from './emotional-impact.js';
 import { evaluateFollowUp } from './follow-up.js';
+import { detectGaps, scoreAlgorithmConfidence } from './gaps.js';
 import { deduplicateItems, groundAnalysis } from './grounding.js';
 import { HINGLISH_MARKERS, NON_LATIN_SCRIPT } from './lexicon.js';
 import {
@@ -31,8 +43,21 @@ import {
   normalizeItems,
   normalizeMissingInformation,
 } from './normalize.js';
+import {
+  defaultPatternStorePath,
+  learnFromDisagreements,
+  loadPatternStore,
+  savePatternStore,
+} from './pattern-store.js';
 import { buildInstructions, buildUserMessage } from './prompt.js';
+import { extractTeacherPatches, reconcileWithTeacher } from './reconcile.js';
 import { segmentConversation } from './segment.js';
+import { detectStance } from './stance.js';
+import {
+  buildTeacherInstructions,
+  buildTeacherUserMessage,
+  toTeacherDraft,
+} from './teacher-prompt.js';
 
 export interface UnderstandRequest {
   text: string;
@@ -51,13 +76,8 @@ export interface UnderstandResult {
   rawModelOutput: unknown;
 }
 
-/**
- * Detects the conversation language.
- *
- * Deliberately coarse. Lifelog only needs to label the record and notice
- * code-switching; it never uses this to gate extraction, because refusing to
- * understand a language is worse than mislabelling it.
- */
+const SKIP_AI_CONFIDENCE = 0.78;
+
 function detectLanguage(text: string, reported: string | undefined): string {
   const hasNonLatin = NON_LATIN_SCRIPT.test(text);
   const words = text.toLowerCase().split(/[^\p{L}]+/u).filter(Boolean);
@@ -66,8 +86,6 @@ function detectLanguage(text: string, reported: string | undefined): string {
 
   if (hasNonLatin && hasLatin) return 'mixed';
   if (hasNonLatin) return reported?.toLowerCase() ?? 'und';
-  // Romanised Hindi inside English text is the common case here and no script
-  // check can catch it, so a small marker list carries the decision.
   if (hinglishHits >= 2) return 'mixed';
 
   const claimed = reported?.trim().toLowerCase();
@@ -75,50 +93,32 @@ function detectLanguage(text: string, reported: string | undefined): string {
   return hasLatin ? 'en' : 'und';
 }
 
-/** One neutral sentence describing the conversation, used when the model gives none. */
 function fallbackSummary(text: string): string {
   const first = text.trim().replace(/\s+/g, ' ');
   return first.length > 160 ? `${first.slice(0, 157)}…` : first;
 }
 
-/**
- * Runs a conversation through the full understanding pipeline.
- *
- * Throws only when no provider could produce anything at all; every other
- * failure degrades into warnings on a valid analysis.
- */
-export async function understandConversation(
-  runtime: AiRuntimeOptions,
-  request: UnderstandRequest,
-): Promise<UnderstandResult> {
-  const startedAt = Date.now();
+interface ProcessedDraft {
+  intent: Intent;
+  intentConfidence: number;
+  languageHint: string | undefined;
+  summary: string;
+  entities: Entity[];
+  items: Item[];
+  missingRaw: unknown;
+  warnings: Warning[];
+}
+
+/** Shared normalisation → ground → classify → Reminder/Task enrich. */
+function processRawExtraction(
+  text: string,
+  now: Date,
+  timezone: string | null,
+  raw: Record<string, unknown>,
+  segments: ReturnType<typeof segmentConversation>,
+): ProcessedDraft {
   const warnings: Warning[] = [];
 
-  // --- 1. Segment ---------------------------------------------------------
-  // Done before the model call so segmentation is stable regardless of provider.
-  const segments = segmentConversation(request.text);
-
-  // --- 2. Ask the AI provider --------------------------------------------
-  const providerResult = await runProviders(runtime, {
-    text: request.text,
-    now: request.now,
-    timezone: request.timezone,
-    instructions: buildInstructions(),
-    userMessage: buildUserMessage(request),
-  });
-
-  if (providerResult.degraded) {
-    const failure = providerResult.attempts.find((attempt) => attempt.status === 'error');
-    warnings.push({
-      code: 'PROVIDER_DEGRADED',
-      message: `answered by the ${providerResult.provider} fallback provider`,
-      detail: { failedProvider: failure?.provider ?? null, reason: failure?.errorKind ?? null },
-    });
-  }
-
-  const raw = (providerResult.raw ?? {}) as Record<string, unknown>;
-
-  // --- 3. Normalise -------------------------------------------------------
   const { intent: coercedIntent, exact } = coerceIntent(raw.intent);
   if (!exact && raw.intent !== undefined) {
     warnings.push({
@@ -133,20 +133,13 @@ export async function understandConversation(
   const normalizedItems = normalizeItems(raw.items, normalizedEntities.idMap);
   warnings.push(...normalizedItems.warnings);
 
-  // --- 4. Ground ----------------------------------------------------------
-  const grounded = groundAnalysis(request.text, normalizedEntities.entities, normalizedItems.items);
+  const grounded = groundAnalysis(text, normalizedEntities.entities, normalizedItems.items);
   warnings.push(...grounded.warnings);
 
-  // --- 5. Deduplicate -----------------------------------------------------
   const deduplicated = deduplicateItems(grounded.items);
   warnings.push(...deduplicated.warnings);
 
-  // --- 6..9. Classification rules Lifelog owns ---------------------------
-  const context: ClassificationContext = {
-    text: request.text,
-    now: request.now,
-    timezone: request.timezone,
-  };
+  const context: ClassificationContext = { text, now, timezone };
 
   let items = deduplicated.items;
   for (const stage of [
@@ -161,14 +154,10 @@ export async function understandConversation(
     warnings.push(...result.warnings);
   }
 
-  // Classification can create duplicates that did not exist before it ran — a
-  // TASK promoted to REMINDER can collide with a REMINDER on the same span. So
-  // deduplication runs again, after types have settled.
   const settled = deduplicateItems(items);
   items = settled.items;
   warnings.push(...settled.warnings);
 
-  // Attach each item to the segment its span falls inside.
   for (const item of items) {
     if (item.source_span) {
       const segment = segments.find(
@@ -179,8 +168,8 @@ export async function understandConversation(
     }
   }
 
-  // --- 10. Intent reconciliation -----------------------------------------
-  // An explicit reminder outranks whatever the model called the conversation.
+  items = enrichActionItems(items, { text, entities: grounded.entities });
+
   let intent = coercedIntent;
   if (items.some((item) => item.type === 'REMINDER') && intent !== 'SET_REMINDER') {
     intent = 'SET_REMINDER';
@@ -192,35 +181,269 @@ export async function understandConversation(
     intent = items.some((item) => item.type === 'TASK') ? 'CAPTURE_TASK' : 'LOG';
   }
 
-  // --- 11. Missing information and follow-up -----------------------------
-  const { missing, followUp } = evaluateFollowUp(
-    items,
-    { intent, text: request.text },
-    normalizeMissingInformation(raw.missing_information),
-  );
-
-  // --- 12. Assemble and validate -----------------------------------------
-  const candidate = {
-    schema_version: ANALYSIS_SCHEMA_VERSION,
+  return {
     intent,
-    intent_confidence: typeof raw.intent_confidence === 'number' ? raw.intent_confidence : 0.5,
-    language: detectLanguage(request.text, typeof raw.language === 'string' ? raw.language : undefined),
+    intentConfidence: typeof raw.intent_confidence === 'number' ? raw.intent_confidence : 0.5,
+    languageHint: typeof raw.language === 'string' ? raw.language : undefined,
     summary:
       typeof raw.summary === 'string' && raw.summary.trim()
         ? raw.summary.trim()
-        : fallbackSummary(request.text),
-    segments,
+        : fallbackSummary(text),
     entities: grounded.entities,
     items,
+    missingRaw: raw.missing_information,
+    warnings,
+  };
+}
+
+/**
+ * Runs a conversation through the full understanding pipeline.
+ */
+export async function understandConversation(
+  runtime: AiRuntimeOptions,
+  request: UnderstandRequest,
+): Promise<UnderstandResult> {
+  const startedAt = Date.now();
+  const segments = segmentConversation(request.text);
+
+  const fullInstructions = buildInstructions();
+  const fullUserMessage = buildUserMessage(request);
+
+  // --- Algorithm draft (always, via local rule engine) -------------------
+  const localProvider = new LocalRuleProvider();
+  const draftProviderResult = await runProviders(
+    { primary: localProvider, fallback: null, maxRetries: 0 },
+    {
+      text: request.text,
+      now: request.now,
+      timezone: request.timezone,
+      instructions: fullInstructions,
+      userMessage: fullUserMessage,
+    },
+  );
+
+  let draft = processRawExtraction(
+    request.text,
+    request.now,
+    request.timezone,
+    (draftProviderResult.raw ?? {}) as Record<string, unknown>,
+    segments,
+  );
+
+  let gaps: AnalysisGap[] = detectGaps(draft.items, { text: request.text, intent: draft.intent });
+  let algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
+  const stanceDraft = detectStance(request.text, draft.intent, draft.items);
+
+  const primaryName = runtime.primary.name;
+  const honorScriptedPrimary = primaryName === 'mock' || primaryName === 'local';
+  const canSkipHosted =
+    !honorScriptedPrimary && algorithmConfidence >= SKIP_AI_CONFIDENCE && gaps.length === 0;
+
+  let providerName = draftProviderResult.provider;
+  let providerModel = draftProviderResult.model;
+  let degraded = false;
+  let attempts: ProviderAttempt[] = [...draftProviderResult.attempts];
+  let rawModelOutput: unknown = draftProviderResult.raw;
+  let usedAiTeacher = false;
+  let skippedAi = false;
+  let disagreementCount = 0;
+  let winners: string[] = ['algorithm'];
+  let emotionalImpact: EmotionalImpact[] = inferEmotionalImpact(
+    request.text,
+    draft.items,
+    draft.entities,
+  );
+
+  if (canSkipHosted) {
+    skippedAi = true;
+    winners = ['algorithm'];
+  } else if (honorScriptedPrimary) {
+    // Tests and forced-local: primary extraction is authoritative.
+    const providerResult = await runProviders(runtime, {
+      text: request.text,
+      now: request.now,
+      timezone: request.timezone,
+      instructions: fullInstructions,
+      userMessage: fullUserMessage,
+    });
+    attempts = [...attempts, ...providerResult.attempts];
+    rawModelOutput = providerResult.raw;
+    providerName = providerResult.provider;
+    providerModel = providerResult.model;
+    degraded = providerResult.degraded;
+    draft = processRawExtraction(
+      request.text,
+      request.now,
+      request.timezone,
+      (providerResult.raw ?? {}) as Record<string, unknown>,
+      segments,
+    );
+    if (providerResult.degraded) {
+      draft.warnings.push({
+        code: 'PROVIDER_DEGRADED',
+        message: `answered by the ${providerResult.provider} fallback provider`,
+        detail: {
+          failedProvider: providerResult.attempts.find((a) => a.status === 'error')?.provider ?? null,
+          reason: providerResult.attempts.find((a) => a.status === 'error')?.errorKind ?? null,
+        },
+      });
+    }
+    gaps = detectGaps(draft.items, { text: request.text, intent: draft.intent });
+    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
+    emotionalImpact = inferEmotionalImpact(request.text, draft.items, draft.entities);
+    winners = [providerResult.degraded ? 'algorithm-fallback' : 'primary'];
+  } else if (gaps.length > 0 && runtime.primary.isAvailable()) {
+    // Hosted teacher for gaps only.
+    usedAiTeacher = true;
+    const teacherDraft = toTeacherDraft({
+      intent: draft.intent,
+      stance: stanceDraft.stance,
+      confidence: algorithmConfidence,
+      entities: draft.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind })),
+      items: draft.items,
+      gaps,
+    });
+    const teacherResult = await runProviders(runtime, {
+      text: request.text,
+      now: request.now,
+      timezone: request.timezone,
+      instructions: buildTeacherInstructions(),
+      userMessage: buildTeacherUserMessage({
+        text: request.text,
+        now: request.now,
+        timezone: request.timezone,
+        draft: teacherDraft,
+      }),
+    });
+    attempts = [...attempts, ...teacherResult.attempts];
+    rawModelOutput = teacherResult.raw;
+    providerName = teacherResult.provider;
+    providerModel = teacherResult.model;
+    degraded = teacherResult.degraded;
+
+    if (teacherResult.degraded) {
+      draft.warnings.push({
+        code: 'PROVIDER_DEGRADED',
+        message: `teacher unavailable; kept algorithm draft from ${draftProviderResult.provider}`,
+      });
+      winners = ['algorithm'];
+    } else {
+      const patches = extractTeacherPatches(teacherResult.raw);
+      const reconciled = reconcileWithTeacher({
+        text: request.text,
+        intent: draft.intent,
+        stance: stanceDraft.stance,
+        items: draft.items,
+        entities: draft.entities,
+        emotionalImpact,
+        gaps,
+        patches,
+      });
+      draft.warnings.push(...reconciled.warnings);
+      draft.intent = reconciled.intent;
+      draft.items = enrichActionItems(reconciled.items, {
+        text: request.text,
+        entities: reconciled.entities,
+      });
+      // Re-ground teacher-added items.
+      const reground = groundAnalysis(request.text, reconciled.entities, draft.items);
+      draft.entities = reground.entities;
+      draft.items = enrichActionItems(reground.items, {
+        text: request.text,
+        entities: reground.entities,
+      });
+      draft.warnings.push(...reground.warnings);
+      emotionalImpact = reconciled.emotionalImpact;
+      disagreementCount = reconciled.disagreements.length;
+      winners = reconciled.winners.length ? reconciled.winners : ['algorithm', 'ai'];
+
+      // Curated relearn — weights only, never edits source files.
+      try {
+        const config = loadConfig();
+        const path = defaultPatternStorePath(config.repoRoot);
+        const store = loadPatternStore(path);
+        const updated = learnFromDisagreements(store, reconciled.disagreements);
+        savePatternStore(path, updated);
+      } catch {
+        draft.warnings.push({
+          code: 'PATTERN_STORE_SKIPPED',
+          message: 'could not persist pattern weights',
+        });
+      }
+    }
+    gaps = detectGaps(draft.items, { text: request.text, intent: draft.intent });
+  } else {
+    // Hosted full extract when draft is weak but has no structured gaps list,
+    // or primary unavailable for teacher.
+    const providerResult = await runProviders(runtime, {
+      text: request.text,
+      now: request.now,
+      timezone: request.timezone,
+      instructions: fullInstructions,
+      userMessage: fullUserMessage,
+    });
+    attempts = [...attempts, ...providerResult.attempts];
+    rawModelOutput = providerResult.raw;
+    providerName = providerResult.provider;
+    providerModel = providerResult.model;
+    degraded = providerResult.degraded;
+    if (providerResult.degraded) {
+      draft.warnings.push({
+        code: 'PROVIDER_DEGRADED',
+        message: `answered by the ${providerResult.provider} fallback provider`,
+      });
+      // Keep algorithm draft when hosted fails.
+      winners = ['algorithm'];
+    } else {
+      draft = processRawExtraction(
+        request.text,
+        request.now,
+        request.timezone,
+        (providerResult.raw ?? {}) as Record<string, unknown>,
+        segments,
+      );
+      winners = ['primary'];
+    }
+    gaps = detectGaps(draft.items, { text: request.text, intent: draft.intent });
+    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
+    emotionalImpact = inferEmotionalImpact(request.text, draft.items, draft.entities);
+  }
+
+  const stance = detectStance(request.text, draft.intent, draft.items);
+
+  const { missing, followUp } = evaluateFollowUp(
+    draft.items,
+    { intent: draft.intent, text: request.text },
+    normalizeMissingInformation(draft.missingRaw),
+  );
+
+  const candidate = {
+    schema_version: ANALYSIS_SCHEMA_VERSION,
+    intent: draft.intent,
+    intent_confidence: draft.intentConfidence,
+    stance: stance.stance,
+    stance_confidence: stance.confidence,
+    language: detectLanguage(request.text, draft.languageHint),
+    summary: draft.summary,
+    segments,
+    entities: draft.entities,
+    items: draft.items,
+    emotional_impact: emotionalImpact,
+    gaps,
+    algorithm_confidence: algorithmConfidence,
+    reconciliation: {
+      used_ai_teacher: usedAiTeacher && !degraded,
+      skipped_ai: skippedAi,
+      disagreement_count: disagreementCount,
+      winners,
+    },
     missing_information: missing,
     follow_up: followUp,
-    warnings,
+    warnings: draft.warnings,
   };
 
   const parsed = AnalysisSchema.safeParse(candidate);
   if (!parsed.success) {
-    // Reaching here means a pipeline bug, not a model failure — the model's
-    // output was normalised several stages ago. Fail loudly in development.
     throw new Error(
       `Pipeline produced an invalid analysis: ${parsed.error.issues
         .map((issue) => `${issue.path.join('.')} ${issue.message}`)
@@ -229,17 +452,17 @@ export async function understandConversation(
   }
 
   const analysis = calibrate(parsed.data, {
-    degraded: providerResult.degraded,
-    repaired: warnings.some((warning) => warning.code === 'INTENT_COERCED'),
+    degraded,
+    repaired: draft.warnings.some((warning) => warning.code === 'INTENT_COERCED'),
   });
 
   return {
     analysis,
-    provider: providerResult.provider,
-    model: providerResult.model,
-    degraded: providerResult.degraded,
+    provider: providerName,
+    model: providerModel,
+    degraded,
     latencyMs: Date.now() - startedAt,
-    attempts: providerResult.attempts,
-    rawModelOutput: providerResult.raw,
+    attempts,
+    rawModelOutput,
   };
 }

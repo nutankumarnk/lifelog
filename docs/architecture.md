@@ -27,21 +27,25 @@ model-specific behaviour contained in one directory.
         │
         ├──► Intelligence Layer      intelligence/pipeline.ts
         │         │
-        │         │  segment
-        │         │  build instructions
+        │         │  segment → algorithm draft
+        │         │  Reminder/Task enrich, stance, gaps
+        │         │  optional Gemma teacher → reconcile
         │         ▼
         │    AI Provider             ai/registry.ts → ai/*.provider.ts
-        │         │     retry, failover, degrade
+        │         │     retry, failover, degrade, teacher patches
         │         ▼
         │    ┌─────────────────┐
         │    │ external model  │  ← the only replaceable-by-design part
         │    └─────────────────┘
-        │         │  loose JSON
+        │         │  loose JSON / patches
         │         ▼
         │    Normalisation   →  Grounding  →  Deduplication
         │         │
         │         ▼
-        │    Classification (Lifelog's product rules)
+        │    Classification + domain enrich (Reminder/Task)
+        │         │
+        │         ▼
+        │    Stance / emotional impact / pattern weights
         │         │
         │         ▼
         │    Follow-up decision  →  Confidence calibration

@@ -284,8 +284,50 @@ export const aiInvocations = pgTable(
 );
 
 // ---------------------------------------------------------------------------
-// Relations
+// disagreements — algorithm vs AI teacher journal (curated relearn corpus).
 // ---------------------------------------------------------------------------
+
+export const disagreements = pgTable(
+  'disagreements',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    analysisId: uuid('analysis_id')
+      .notNull()
+      .references(() => analyses.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    field: varchar('field', { length: 64 }).notNull(),
+    algorithmValue: jsonb('algorithm_value').$type<unknown>(),
+    aiValue: jsonb('ai_value').$type<unknown>(),
+    winner: varchar('winner', { length: 16 }).notNull(),
+    reason: text('reason').notNull().default(''),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('disagreements_analysis_idx').on(table.analysisId),
+    index('disagreements_conversation_idx').on(table.conversationId),
+    index('disagreements_field_idx').on(table.field),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// pattern_weights — runtime relearn weights (not source-code edits).
+// ---------------------------------------------------------------------------
+
+export const patternWeights = pgTable(
+  'pattern_weights',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    feature: varchar('feature', { length: 64 }).notNull(),
+    label: varchar('label', { length: 64 }).notNull(),
+    weight: doublePrecision('weight').notNull().default(0.5),
+    wins: integer('wins').notNull().default(0),
+    losses: integer('losses').notNull().default(0),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex('pattern_weights_feature_label_uidx').on(table.feature, table.label)],
+);
 
 export const conversationsRelations = relations(conversations, ({ many }) => ({
   analyses: many(analyses),
@@ -325,5 +367,5 @@ export const itemEntitiesRelations = relations(itemEntities, ({ one }) => ({
 
 /** Truncates every table. Test-support only; never call from application code. */
 export const TRUNCATE_ALL = sql`TRUNCATE TABLE
-  item_entities, items, entities, segments, follow_ups, ai_invocations, analyses, conversations
+  item_entities, items, entities, segments, follow_ups, ai_invocations, disagreements, pattern_weights, analyses, conversations
   RESTART IDENTITY CASCADE`;

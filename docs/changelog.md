@@ -8,6 +8,29 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-08-20 — 1.1.0
+
+### Added
+
+**Strong algorithm loop + Reminder/Task domain modules.** Analysis schema
+`1.1.0` adds `stance`, `emotional_impact`, `gaps`, `algorithm_confidence`, and
+`reconciliation`. The pipeline always builds a local algorithm draft first;
+high-confidence drafts skip the hosted model. Otherwise Gemma acts as a
+**teacher** (gap patches only), code reconciles grounded winners, and
+`pattern_weights` / lexicon *proposals* learn from disagreements without
+rewriting source files.
+
+**Reminder and Task modules** (`backend/src/domain/`) turn raw fragments into
+grammatical `title` / `summary` / `details.display_text` while leaving
+`source_text` verbatim for grounding.
+
+*Why:* free-tier latency and weak offline extraction both hurt understanding.
+Algorithm-first keeps Lifelog fast when rules suffice; Gemma remains the
+accurate teacher when gaps remain; domain modules make reminders and tasks
+readable in the UI.
+
+---
+
 ## 2026-08-20 — 1.0.2
 
 ### Changed
