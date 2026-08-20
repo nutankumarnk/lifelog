@@ -27,7 +27,7 @@ const REMINDER_LEAD =
   /^(remind me to|remind me|reminder to|set a reminder to|set reminder to|alert me to|ping me to|notify me to)\s+/i;
 
 const TASK_LEAD =
-  /^(i need to|i have to|i must|i should|i gotta|i got to|need to|have to|must|should|make sure to|don't forget to|dont forget to)\s+/i;
+  /^(i need to|i need|i have to|i must|i should|i gotta|i got to|need to|need|have to|must|should|make sure to|don't forget to|dont forget to)\s+/i;
 
 /** Expands common shortcuts without changing meaning. */
 export function expandShortcuts(text: string): string {
@@ -118,6 +118,15 @@ export function formatTaskDisplay(sourceOrTitle: string, entities: Entity[] = []
   let body = expandShortcuts(sourceOrTitle);
   body = body.replace(TASK_LEAD, '');
   body = preferEntitySpellings(body, entities);
+  body = body.replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi, (day) =>
+    sentenceCase(day),
+  );
+  // "send file" → "send the file" when a bare noun follows a verb-ish start
+  body = body.replace(/\b(send|call|email|submit|finish|write|buy|book)\s+(\w+)\b/i, (match, verb, noun) => {
+    if (/^(the|a|an|my|his|her|their|our|him|her|them|it|me|you)$/i.test(noun)) return match;
+    return `${verb} the ${noun}`;
+  });
+  body = body.replace(/\bthe (\w+) (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/, 'the $1 on $2');
   body = sentenceCase(body);
   const displayText = ensurePeriod(body);
   const summary = displayText;

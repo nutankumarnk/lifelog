@@ -30,12 +30,14 @@ export const REMINDER_MARKERS = [
 /** Obligation the user has taken on. Distinct from a reminder — see docs/algorithm.md. */
 export const TASK_MARKERS = [
   'i need to',
+  'i need ',
   'i have to',
   'i must',
   'i should',
   'i gotta',
   'i got to',
   'need to',
+  'need ',
   'have to',
   'has to',
   'must ',
