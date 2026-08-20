@@ -138,25 +138,45 @@ export interface Analysis {
 }
 
 export type ActionStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+export type ReminderStatus = 'SCHEDULED' | 'NOTIFIED' | 'CANCELLED';
 
-export interface TaskItem {
-  id: string;
+export interface ActionSource {
   conversationId: string;
-  type: 'TASK' | 'REMINDER';
-  title: string;
-  summary: string;
-  displayText: string | null;
   sourceText: string;
-  dueAt: string | null;
-  temporalRaw: string | null;
-  status: ActionStatus;
-  priority: string | null;
-  completedAt: string | null;
+  conversationText: string;
+  provider: string;
   createdAt: string;
 }
 
-export interface TaskListResponse {
-  items: TaskItem[];
+export interface ActionLink {
+  entityId: string;
+  name: string;
+  kind: string;
+  relation: string | null;
+  role: string;
+}
+
+export interface ActionItem {
+  id: string;
+  kind: 'TASK' | 'REMINDER';
+  title: string;
+  displayText: string;
+  status: string;
+  priority: string;
+  dueAt: string | null;
+  temporalRaw: string | null;
+  recurrence: string | null;
+  occurrences: number;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  completedAt: string | null;
+  notifiedAt: string | null;
+  sources: ActionSource[];
+  links: ActionLink[];
+}
+
+export interface ActionListResponse {
+  items: ActionItem[];
   counts: { open: number; done: number; total: number };
 }
 

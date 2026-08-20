@@ -62,43 +62,66 @@ export const HealthResponseSchema = z.object({
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
 export const ActionStatusEnum = z.enum(['OPEN', 'IN_PROGRESS', 'DONE', 'CANCELLED']);
+export const TaskStatusEnum = z.enum(['OPEN', 'IN_PROGRESS', 'DONE', 'CANCELLED']);
+export const ReminderStatusEnum = z.enum(['SCHEDULED', 'NOTIFIED', 'CANCELLED']);
 
-export const TaskItemSchema = z.object({
-  id: z.string().uuid(),
+export const ActionSourceSchema = z.object({
   conversationId: z.string().uuid(),
-  type: z.enum(['TASK', 'REMINDER']),
-  title: z.string(),
-  summary: z.string(),
-  displayText: z.string().nullable(),
   sourceText: z.string(),
-  dueAt: z.string().nullable(),
-  temporalRaw: z.string().nullable(),
-  status: ActionStatusEnum,
-  priority: z.string().nullable(),
-  completedAt: z.string().nullable(),
+  conversationText: z.string(),
+  provider: z.string(),
   createdAt: z.string(),
 });
-export type TaskItem = z.infer<typeof TaskItemSchema>;
 
-export const TaskListResponseSchema = z.object({
-  items: z.array(TaskItemSchema),
+export const ActionLinkSchema = z.object({
+  entityId: z.string().uuid(),
+  name: z.string(),
+  kind: z.string(),
+  relation: z.string().nullable(),
+  role: z.string(),
+});
+
+export const ActionItemSchema = z.object({
+  id: z.string().uuid(),
+  kind: z.enum(['TASK', 'REMINDER']),
+  title: z.string(),
+  displayText: z.string(),
+  status: z.string(),
+  priority: z.string(),
+  dueAt: z.string().nullable(),
+  temporalRaw: z.string().nullable(),
+  recurrence: z.string().nullable(),
+  /** How many times the user has asked for this. */
+  occurrences: z.number().int().min(1),
+  firstSeenAt: z.string(),
+  lastSeenAt: z.string(),
+  completedAt: z.string().nullable(),
+  notifiedAt: z.string().nullable(),
+  sources: z.array(ActionSourceSchema),
+  links: z.array(ActionLinkSchema),
+});
+export type ActionItem = z.infer<typeof ActionItemSchema>;
+
+export const ActionListResponseSchema = z.object({
+  items: z.array(ActionItemSchema),
   counts: z.object({
     open: z.number().int().min(0),
     done: z.number().int().min(0),
     total: z.number().int().min(0),
   }),
 });
-export type TaskListResponse = z.infer<typeof TaskListResponseSchema>;
-
-export const TaskListQuerySchema = z.object({
-  status: ActionStatusEnum.optional(),
-  limit: z.coerce.number().int().min(1).max(200).optional(),
-});
+export type ActionListResponse = z.infer<typeof ActionListResponseSchema>;
 
 export const UpdateTaskRequestSchema = z.object({
-  status: ActionStatusEnum,
+  status: TaskStatusEnum,
 });
 export type UpdateTaskRequest = z.infer<typeof UpdateTaskRequestSchema>;
+
+export const UpdateReminderRequestSchema = z.object({
+  /** Reminders are never deleted or ticked off; Lifelog owns their lifecycle. */
+  status: z.enum(['NOTIFIED', 'CANCELLED']),
+});
+export type UpdateReminderRequest = z.infer<typeof UpdateReminderRequestSchema>;
 
 /** The one and only error envelope. See docs/error-handling.md. */
 export const ErrorResponseSchema = z.object({

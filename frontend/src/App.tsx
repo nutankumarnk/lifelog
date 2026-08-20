@@ -7,7 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { analyzeConversation, fetchHealth, LifelogApiError } from './api';
 import { ResultPanel } from './components/ResultPanel';
-import { TaskList } from './components/TaskList';
+import { ActionLists } from './components/ActionLists';
 import { SAMPLES } from './samples';
 import type { AnalyzeResponse, HealthResponse } from './types';
 
@@ -225,7 +225,7 @@ export function App() {
             )}
           </section>
 
-          <TaskList refreshKey={taskRefreshKey} />
+          <ActionLists refreshKey={taskRefreshKey} />
         </div>
       </main>
 

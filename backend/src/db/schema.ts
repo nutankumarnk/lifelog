@@ -329,6 +329,95 @@ export const patternWeights = pgTable(
   (table) => [uniqueIndex('pattern_weights_feature_label_uidx').on(table.feature, table.label)],
 );
 
+// ---------------------------------------------------------------------------
+// action_items — the canonical, de-duplicated tasks and reminders.
+//
+// `items` records what each analysis extracted. This table records what the
+// user actually has to do, or be told about. Saying the same thing twice in two
+// conversations produces one row here, with two provenance rows.
+// ---------------------------------------------------------------------------
+
+export const actionItems = pgTable(
+  'action_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    /** TASK — the user completes it. REMINDER — Lifelog notifies at a time. */
+    kind: varchar('kind', { length: 16 }).notNull(),
+    /** Normalised action + due date: the identity of the obligation. */
+    dedupeKey: text('dedupe_key').notNull(),
+    title: text('title').notNull(),
+    displayText: text('display_text').notNull().default(''),
+    /** TASK: OPEN/IN_PROGRESS/DONE/CANCELLED. REMINDER: SCHEDULED/NOTIFIED. */
+    status: varchar('status', { length: 16 }).notNull().default('OPEN'),
+    priority: varchar('priority', { length: 16 }).notNull().default('NORMAL'),
+    dueAt: timestamp('due_at', { withTimezone: true }),
+    temporalRaw: text('temporal_raw'),
+    recurrence: text('recurrence'),
+    /** How many times the user has said this. Restating is not a new task. */
+    occurrences: integer('occurrences').notNull().default(1),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    notifiedAt: timestamp('notified_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('action_items_dedupe_uidx').on(table.kind, table.dedupeKey),
+    index('action_items_kind_status_idx').on(table.kind, table.status),
+    index('action_items_due_idx').on(table.dueAt),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// action_item_sources — provenance: how this task or reminder came to exist.
+// ---------------------------------------------------------------------------
+
+export const actionItemSources = pgTable(
+  'action_item_sources',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    actionItemId: uuid('action_item_id')
+      .notNull()
+      .references(() => actionItems.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    itemId: uuid('item_id').references(() => items.id, { onDelete: 'set null' }),
+    /** The exact words that produced it, so the origin stays visible. */
+    sourceText: text('source_text').notNull().default(''),
+    /** The whole message it came from, for context. */
+    conversationText: text('conversation_text').notNull().default(''),
+    provider: varchar('provider', { length: 32 }).notNull().default('unknown'),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    index('action_item_sources_action_idx').on(table.actionItemId),
+    index('action_item_sources_conversation_idx').on(table.conversationId),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// action_item_links — who and what this task or reminder is about.
+// ---------------------------------------------------------------------------
+
+export const actionItemLinks = pgTable(
+  'action_item_links',
+  {
+    actionItemId: uuid('action_item_id')
+      .notNull()
+      .references(() => actionItems.id, { onDelete: 'cascade' }),
+    entityId: uuid('entity_id')
+      .notNull()
+      .references(() => entities.id, { onDelete: 'cascade' }),
+    /** person / place / organization / topic, mirrored from the entity kind. */
+    role: varchar('role', { length: 32 }).notNull().default('about'),
+  },
+  (table) => [
+    primaryKey({ columns: [table.actionItemId, table.entityId] }),
+    index('action_item_links_entity_idx').on(table.entityId),
+  ],
+);
+
 export const conversationsRelations = relations(conversations, ({ many }) => ({
   analyses: many(analyses),
   items: many(items),
@@ -367,5 +456,6 @@ export const itemEntitiesRelations = relations(itemEntities, ({ one }) => ({
 
 /** Truncates every table. Test-support only; never call from application code. */
 export const TRUNCATE_ALL = sql`TRUNCATE TABLE
+  action_item_links, action_item_sources, action_items,
   item_entities, items, entities, segments, follow_ups, ai_invocations, disagreements, pattern_weights, analyses, conversations
   RESTART IDENTITY CASCADE`;

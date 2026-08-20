@@ -19,6 +19,7 @@ import type { AiRuntimeOptions } from '../ai/registry.js';
 import { AiProviderError } from '../ai/provider.js';
 import { AppError } from '../errors/app-error.js';
 import { understandConversation } from '../intelligence/pipeline.js';
+import type { ActionItemRepository } from '../repositories/action-item.repository.js';
 import type { AnalysisRepository } from '../repositories/analysis.repository.js';
 import type { ConversationRepository } from '../repositories/conversation.repository.js';
 import type { Analysis } from '../schemas/analysis.schema.js';
@@ -38,6 +39,8 @@ export interface AnalyzeResult {
 export interface ConversationServiceDeps {
   conversations: ConversationRepository;
   analyses: AnalysisRepository;
+  /** Optional: when present, tasks and reminders are de-duplicated and tracked. */
+  actionItems?: ActionItemRepository;
   runtime: AiRuntimeOptions;
   /** Injected so tests can pin "now" instead of depending on the wall clock. */
   clock?: () => Date;
@@ -128,6 +131,57 @@ export class ConversationService {
       persisted = true;
 
       await this.deps.conversations.setLanguage(conversationId, understanding.analysis.language);
+
+      // --- 4. Track tasks and reminders ------------------------------------
+      // Restating an obligation must not create a second one, so this merges on
+      // the action key and records where each mention came from.
+      if (this.deps.actionItems) {
+        const entityById = new Map(
+          understanding.analysis.entities.map((entity) => [entity.id, entity]),
+        );
+
+        for (const item of understanding.analysis.items) {
+          if (item.type !== 'TASK' && item.type !== 'REMINDER') continue;
+
+          const entityNames = item.entity_ids
+            .map((localId) => entityById.get(localId)?.name)
+            .filter((name): name is string => Boolean(name));
+
+          const dbEntityIds = item.entity_ids
+            .map((localId) => result.entityIds[localId])
+            .filter((value): value is string => Boolean(value));
+
+          try {
+            await this.deps.actionItems.record({
+              kind: item.type,
+              title: item.title,
+              displayText:
+                typeof item.details.display_text === 'string'
+                  ? item.details.display_text
+                  : item.summary || item.title,
+              sourceText: item.source_text,
+              conversationText: request.text,
+              conversationId,
+              itemId: result.itemIds[item.id] ?? null,
+              provider: understanding.provider,
+              priority:
+                typeof item.details.priority === 'string' ? item.details.priority : 'NORMAL',
+              dueAt: item.temporal.resolved ? new Date(item.temporal.resolved) : null,
+              temporalRaw: item.temporal.raw,
+              recurrence: item.temporal.recurrence,
+              entityIds: dbEntityIds,
+              entityNames,
+            });
+          } catch (error) {
+            // Tracking is a convenience over the stored analysis; failing it
+            // must not fail the request.
+            this.deps.logger?.warn(
+              { conversationId, itemType: item.type, err: String(error) },
+              'could not track action item',
+            );
+          }
+        }
+      }
     } catch (error) {
       // Deliberately non-fatal. The conversation is safe and the analysis is
       // still returned; it can be recomputed and re-stored later.

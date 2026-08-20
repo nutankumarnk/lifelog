@@ -15,14 +15,14 @@ import { buildAiRuntime, type AiRuntimeOptions } from './ai/registry.js';
 import { loadConfig, type AppConfig } from './config/env.js';
 import { getDb, type Database } from './db/client.js';
 import { ConversationController } from './controllers/conversation.controller.js';
-import { TaskController } from './controllers/task.controller.js';
+import { ReminderController, TaskController } from './controllers/task.controller.js';
 import { registerErrorHandler } from './errors/handler.js';
+import { ActionItemRepository } from './repositories/action-item.repository.js';
 import { AnalysisRepository } from './repositories/analysis.repository.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
-import { TaskRepository } from './repositories/task.repository.js';
 import { registerConversationRoutes } from './routes/conversations.route.js';
 import { registerHealthRoutes } from './routes/health.route.js';
-import { registerTaskRoutes } from './routes/tasks.route.js';
+import { registerActionRoutes } from './routes/tasks.route.js';
 import { ConversationService } from './services/conversation.service.js';
 import { summarizeText } from './utils/redact.js';
 
@@ -100,9 +100,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
   const runtime = buildAiRuntime(config, options.runtime);
 
   if (db) {
+    const actionItems = new ActionItemRepository(db);
+
     const service = new ConversationService({
       conversations: new ConversationRepository(db),
       analyses: new AnalysisRepository(db),
+      actionItems,
       runtime,
       clock: options.clock,
       logger: {
@@ -112,7 +115,10 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
     });
 
     await registerConversationRoutes(app, { controller: new ConversationController(service) });
-    await registerTaskRoutes(app, { controller: new TaskController(new TaskRepository(db)) });
+    await registerActionRoutes(app, {
+      tasks: new TaskController(actionItems),
+      reminders: new ReminderController(actionItems),
+    });
   } else {
     // Without a database Lifelog cannot honour its own guarantee that the
     // conversation is preserved, so the endpoint refuses rather than pretending.

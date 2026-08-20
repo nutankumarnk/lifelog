@@ -7,12 +7,11 @@
  * docs/architecture.md.
  */
 import type {
+  ActionListResponse,
   ActionStatus,
   AnalyzeResponse,
   ApiError,
   HealthResponse,
-  TaskItem,
-  TaskListResponse,
 } from './types';
 
 /** Vite proxies these paths to the backend. See vite.config.ts. */
@@ -73,17 +72,24 @@ export async function fetchHealth(signal?: AbortSignal): Promise<HealthResponse>
   return (await response.json()) as HealthResponse;
 }
 
-export async function fetchTasks(signal?: AbortSignal): Promise<TaskListResponse> {
-  const response = await fetch(`${BASE}/api/v1/tasks?limit=50`, { signal });
+export async function fetchTasks(signal?: AbortSignal): Promise<ActionListResponse> {
+  const response = await fetch(`${BASE}/api/v1/tasks`, { signal });
   if (!response.ok) await parseError(response);
-  return (await response.json()) as TaskListResponse;
+  return (await response.json()) as ActionListResponse;
 }
 
+export async function fetchReminders(signal?: AbortSignal): Promise<ActionListResponse> {
+  const response = await fetch(`${BASE}/api/v1/reminders`, { signal });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as ActionListResponse;
+}
+
+/** Tasks only. Reminders are never ticked off by the user. */
 export async function updateTaskStatus(
   id: string,
   status: ActionStatus,
   signal?: AbortSignal,
-): Promise<TaskItem> {
+): Promise<void> {
   const response = await fetch(`${BASE}/api/v1/tasks/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -92,5 +98,4 @@ export async function updateTaskStatus(
   });
 
   if (!response.ok) await parseError(response);
-  return (await response.json()) as TaskItem;
 }

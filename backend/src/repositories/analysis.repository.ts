@@ -30,6 +30,9 @@ export interface PersistAnalysisInput {
 
 export interface PersistedAnalysis {
   analysisId: string;
+  /** Local ids (`i1`, `e1`) mapped to database ids, for follow-on writes. */
+  itemIds: Record<string, string>;
+  entityIds: Record<string, string>;
 }
 
 /** Converts an ISO date/datetime string into a Date, tolerating date-only values. */
@@ -82,6 +85,7 @@ export class AnalysisRepository {
 
       // Entities first: item rows reference them through the join table.
       const entityIdByLocalId = new Map<string, string>();
+      const itemIdByLocalId = new Map<string, string>();
       if (analysis.entities.length > 0) {
         const entityRows = await tx
           .insert(entities)
@@ -133,7 +137,7 @@ export class AnalysisRepository {
           )
           .returning({ id: items.id, localId: items.localId });
 
-        const itemIdByLocalId = new Map(itemRows.map((row) => [row.localId, row.id]));
+        for (const row of itemRows) itemIdByLocalId.set(row.localId, row.id);
 
         const joinRows = analysis.items.flatMap((item) => {
           const itemId = itemIdByLocalId.get(item.id);
@@ -173,7 +177,11 @@ export class AnalysisRepository {
         );
       }
 
-      return { analysisId };
+      return {
+        analysisId,
+        itemIds: Object.fromEntries(itemIdByLocalId),
+        entityIds: Object.fromEntries(entityIdByLocalId),
+      };
     });
   }
 
