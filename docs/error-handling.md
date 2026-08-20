@@ -124,9 +124,12 @@ things.
 
 ### Network and timeout errors
 
-Every provider call carries an `AbortSignal.timeout` (`AI_TIMEOUT_MS`, default
-45s). Nothing waits indefinitely. Retry backoff is bounded at 2s so a slow
-provider cannot stall a request beyond the timeout budget.
+Every provider call races a hard deadline (`AI_TIMEOUT_MS`, default 5s) in
+addition to `AbortSignal`. Free-tier hosts sometimes accept the socket and then
+stall without delivering a body. Retry backoff is bounded at 2s; timeouts and
+rate limits are not retried so a saturated free queue cannot multiply wait time.
+The offline fallback is warmed in parallel with the primary so degradation does
+not add a second sequential wait.
 
 ### Internal errors
 

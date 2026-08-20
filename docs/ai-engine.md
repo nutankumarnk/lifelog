@@ -16,9 +16,9 @@ swappable.** Everything in this document is about keeping that true.
 | Hosted provider | OpenRouter, OpenAI-compatible `/chat/completions` |
 | Default model | `google/gemma-4-26b-a4b-it:free` |
 | Temperature | 0.1 |
-| Timeout | 45s |
-| Retries | 2, on retryable errors only |
-| Fallback | `local` — Lifelog's own offline rule engine |
+| Timeout | 5s (then offline fallback; free-tier queues often stall longer) |
+| Retries | 0 by default — timeouts/rate-limits are not retried |
+| Fallback | `local` — Lifelog's own offline rule engine (warmed in parallel) |
 | SDK | None. Plain `fetch`. |
 
 Configured by `AI_PROVIDER`, `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`,
@@ -169,10 +169,12 @@ One model call per conversation. No streaming, no multi-turn, no chain of
 thought, no caching. A conversation is one prompt and one response, so cost is
 roughly linear in message length and predictable.
 
-Typical hosted latency for Gemma 3 27B on a short message is a few hundred
-milliseconds to a couple of seconds; the 45s timeout exists for the tail, not the
-median. The local provider answers in single-digit milliseconds, which is why
-the whole test suite runs against it.
+Typical hosted latency on a short message is a few hundred milliseconds to a
+couple of seconds when the free endpoint is healthy. Free-tier queues can stall
+far longer; the 5s timeout exists so the UI never hangs — Lifelog then answers
+with the offline engine (`meta.degraded: true`). The local provider answers in
+single-digit milliseconds, and it is warmed in parallel with the hosted call so
+degradation does not add a second wait. The whole test suite runs against local.
 
 The largest available cost lever is not the model — it is not calling one.
 Lifelog's rule engine already handles a meaningful share of simple messages

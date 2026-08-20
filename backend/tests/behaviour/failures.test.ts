@@ -39,6 +39,34 @@ describe('Scenario 13 — AI failure', () => {
     expect(result.analysis.warnings.some((warning) => warning.code === 'PROVIDER_DEGRADED')).toBe(true);
   });
 
+  it('warms the fallback in parallel so a slow primary does not add sequential wait', async () => {
+    const primary = new MockProvider([
+      {
+        kind: 'fail',
+        delayMs: 120,
+        error: new AiProviderError('TIMEOUT', 'mock', 'took too long', { retryable: false }),
+      },
+    ]);
+    const fallback = new MockProvider([
+      {
+        kind: 'respond',
+        delayMs: 80,
+        payload: { intent: 'LOG', entities: [], items: [] },
+      },
+    ]);
+
+    const startedAt = Date.now();
+    const result = await runProviders({ primary, fallback, maxRetries: 0 }, request);
+    const wallMs = Date.now() - startedAt;
+
+    expect(result.degraded).toBe(true);
+    expect(result.provider).toBe('mock');
+    // Sequential would be ~200ms; parallel should finish near the primary's 120ms.
+    expect(wallMs).toBeLessThan(180);
+    expect(result.attempts[0]).toMatchObject({ status: 'error', errorKind: 'TIMEOUT' });
+    expect(result.attempts[1]).toMatchObject({ status: 'ok' });
+  });
+
   it('retries a retryable failure before giving up', async () => {
     const provider = new MockProvider([
       { kind: 'fail', error: new AiProviderError('RATE_LIMITED', 'mock', 'slow down') },

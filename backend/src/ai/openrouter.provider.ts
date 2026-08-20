@@ -7,9 +7,42 @@
  *
  * This file contains no Lifelog business rules. It moves a prompt out and a
  * JSON object back, and turns every failure mode into an `AiProviderError`.
+ *
+ * Latency notes:
+ *   - Free-tier endpoints are often queue-bound. We ask OpenRouter to prefer
+ *     low-latency providers, cap output tokens, and skip `response_format`
+ *     (which filters out endpoints that would otherwise be faster — Lifelog
+ *     already recovers JSON from fenced/prose-wrapped replies).
+ *   - Timeouts are not retried. Retrying a saturated free queue multiplies wait
+ *     time; the registry falls back to the offline engine instead.
  */
 import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult } from './provider.js';
 import { parseModelJson } from './json.js';
+
+/** Enough for a compact analysis JSON. Lower = faster free-tier replies. */
+const MAX_COMPLETION_TOKENS = 600;
+
+/**
+ * Resolves with `promise`, or rejects with `makeError()` when `ms` elapses.
+ * AbortSignal alone is not enough — some upstreams accept the socket and then
+ * stall without ever delivering a body, and Node's fetch does not always
+ * reject promptly in that state.
+ */
+function raceTimeout<T>(promise: Promise<T>, ms: number, makeError: () => Error): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(makeError()), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error: unknown) => {
+        clearTimeout(timer);
+        reject(error);
+      },
+    );
+  });
+}
 
 export interface OpenRouterOptions {
   apiKey: string | undefined;
@@ -27,6 +60,7 @@ interface ChatCompletionResponse {
   choices?: Array<{ message?: { content?: string | null } }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string; code?: string | number };
+  model?: string;
 }
 
 export class OpenRouterProvider implements AiProvider {
@@ -53,6 +87,23 @@ export class OpenRouterProvider implements AiProvider {
       });
     }
 
+    // Free-tier hosts sometimes accept the TCP connection and then stall past
+    // AbortSignal. Race a hard deadline so Lifelog can fall back instead of
+    // leaving the HTTP request open for minutes.
+    return await raceTimeout(
+      this.callModel(request),
+      this.options.timeoutMs,
+      () =>
+        new AiProviderError(
+          'TIMEOUT',
+          this.name,
+          `model call exceeded ${this.options.timeoutMs}ms`,
+          { retryable: false },
+        ),
+    );
+  }
+
+  private async callModel(request: AnalysisRequest): Promise<ProviderResult> {
     const startedAt = Date.now();
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), this.options.timeoutMs);
@@ -65,16 +116,20 @@ export class OpenRouterProvider implements AiProvider {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${this.options.apiKey}`,
-          // Optional OpenRouter attribution headers. Non-secret.
           ...(this.options.appUrl ? { 'HTTP-Referer': this.options.appUrl } : {}),
           ...(this.options.appTitle ? { 'X-Title': this.options.appTitle } : {}),
         },
         body: JSON.stringify({
           model: this.options.model,
           temperature: this.options.temperature,
-          // Ask for JSON. Not every routed model honours this, which is exactly
-          // why `parseModelJson` and the validation layer still exist.
-          response_format: { type: 'json_object' },
+          max_tokens: MAX_COMPLETION_TOKENS,
+          // Prefer the fastest host for this model. Do not pass a `models`
+          // fallback array here — on free-tier endpoints it has been observed
+          // to stall the request until our client timeout, while the same
+          // primary model alone answers in 1–3s.
+          provider: {
+            sort: 'latency',
+          },
           messages: [
             { role: 'system', content: request.instructions },
             { role: 'user', content: request.userMessage },
@@ -87,7 +142,7 @@ export class OpenRouterProvider implements AiProvider {
         aborted ? 'TIMEOUT' : 'NETWORK',
         this.name,
         aborted ? `model call exceeded ${this.options.timeoutMs}ms` : 'network failure calling model host',
-        { cause: error },
+        { cause: error, retryable: aborted ? false : true },
       );
     } finally {
       clearTimeout(timer);
@@ -141,7 +196,11 @@ export class OpenRouterProvider implements AiProvider {
       });
     }
     if (status === 429) {
-      return new AiProviderError('RATE_LIMITED', this.name, 'model host rate limit reached');
+      // Fall back immediately — waiting and retrying a free-tier rate limit is
+      // how a 5-second failure becomes a 2-minute one.
+      return new AiProviderError('RATE_LIMITED', this.name, 'model host rate limit reached', {
+        retryable: false,
+      });
     }
     if (status >= 500) {
       return new AiProviderError('UPSTREAM', this.name, `model host error ${status}`, {

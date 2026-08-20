@@ -9,6 +9,11 @@
  *
  * Retry policy lives here, not in the adapters, so every provider gets the same
  * behaviour and an adapter stays a thin translation layer.
+ *
+ * Speed: when a fallback exists it is warmed in parallel with the primary. Free-
+ * tier hosts often stall for the full timeout; starting the local engine at the
+ * same time means the response is ready the instant the primary gives up —
+ * there is no sequential "timeout, then start local" tax.
  */
 import type { AppConfig } from '../config/env.js';
 import { LocalRuleProvider } from './local.provider.js';
@@ -80,8 +85,46 @@ function backoffMs(attempt: number): number {
   return Math.min(250 * 2 ** (attempt - 1), 2000);
 }
 
+type WarmResult =
+  | { status: 'ok'; result: ProviderResult }
+  | { status: 'error'; error: AiProviderError }
+  | { status: 'skipped' };
+
 /**
- * Runs the primary provider with retries, then the fallback.
+ * Starts the fallback without recording attempts yet. Attempt rows are appended
+ * only after the primary path finishes, so observability stays ordered:
+ * primary attempts first, then fallback.
+ */
+function warmFallback(provider: AiProvider | null, request: AnalysisRequest): Promise<WarmResult> {
+  if (!provider || !provider.isAvailable()) {
+    return Promise.resolve({ status: 'skipped' });
+  }
+
+  const startedAt = Date.now();
+  return provider
+    .analyze(request)
+    .then(
+      (result): WarmResult => ({
+        status: 'ok',
+        result: {
+          ...result,
+          latencyMs: result.latencyMs || Date.now() - startedAt,
+        },
+      }),
+    )
+    .catch((error: unknown): WarmResult => {
+      const aiError =
+        error instanceof AiProviderError
+          ? error
+          : new AiProviderError('UPSTREAM', provider.name, 'unexpected provider failure', {
+              cause: error,
+            });
+      return { status: 'error', error: aiError };
+    });
+}
+
+/**
+ * Runs the primary provider with retries, warming the fallback in parallel.
  * Throws only when every provider fails.
  */
 export async function runProviders(
@@ -140,8 +183,14 @@ export async function runProviders(
     return null;
   };
 
+  // Warm fallback while the primary runs so a free-tier timeout does not add
+  // a second sequential wait for the offline engine.
+  const fallbackWarm = warmFallback(runtime.fallback, request);
+
   const primaryResult = await tryProvider(runtime.primary, runtime.maxRetries);
   if (primaryResult) {
+    // Primary won — discard the warmed fallback (local work is cheap).
+    void fallbackWarm;
     return {
       ...primaryResult,
       provider: runtime.primary.name,
@@ -152,15 +201,47 @@ export async function runProviders(
   }
 
   if (runtime.fallback) {
-    const fallbackResult = await tryProvider(runtime.fallback, 0);
-    if (fallbackResult) {
+    const warmed = await fallbackWarm;
+
+    if (warmed.status === 'ok') {
+      attempts.push({
+        provider: runtime.fallback.name,
+        model: runtime.fallback.model,
+        status: 'ok',
+        attempt: 1,
+        latencyMs: warmed.result.latencyMs,
+      });
       return {
-        ...fallbackResult,
+        ...warmed.result,
         provider: runtime.fallback.name,
         model: runtime.fallback.model,
         degraded: true,
         attempts,
       };
+    }
+
+    if (warmed.status === 'error') {
+      attempts.push({
+        provider: runtime.fallback.name,
+        model: runtime.fallback.model,
+        status: 'error',
+        attempt: 1,
+        latencyMs: 0,
+        errorKind: warmed.error.kind,
+        errorMessage: warmed.error.message,
+      });
+    } else {
+      // Was unavailable at warm time — try once more through the normal path.
+      const fallbackResult = await tryProvider(runtime.fallback, 0);
+      if (fallbackResult) {
+        return {
+          ...fallbackResult,
+          provider: runtime.fallback.name,
+          model: runtime.fallback.model,
+          degraded: true,
+          attempts,
+        };
+      }
     }
   }
 

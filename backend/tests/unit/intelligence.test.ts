@@ -507,7 +507,7 @@ describe('prompt', () => {
 
   it('states the task/reminder distinction Lifelog enforces in code', () => {
     expect(instructions).toContain('TASK vs REMINDER');
-    expect(instructions).toMatch(/asks to be reminded/i);
+    expect(instructions).toMatch(/asked to be reminded/i);
   });
 
   it('requires verbatim grounding', () => {

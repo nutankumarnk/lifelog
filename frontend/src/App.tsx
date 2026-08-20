@@ -45,6 +45,7 @@ export function App() {
   const [text, setText] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [error, setError] = useState<{ title: string; detail: string; requestId?: string } | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState(false);
@@ -64,6 +65,16 @@ export function App() {
       });
     return () => controller.abort();
   }, []);
+
+  useEffect(() => {
+    if (!loading) {
+      setElapsedMs(0);
+      return;
+    }
+    const started = Date.now();
+    const id = window.setInterval(() => setElapsedMs(Date.now() - started), 200);
+    return () => window.clearInterval(id);
+  }, [loading]);
 
   const submit = useCallback(async () => {
     const trimmed = text.trim();
@@ -179,7 +190,12 @@ export function App() {
               <div className="skeleton skeleton--head" />
               <div className="skeleton" />
               <div className="skeleton skeleton--short" />
-              <p className="muted">Reading the conversation…</p>
+              <p className="muted">
+                Reading the conversation… {(elapsedMs / 1000).toFixed(1)}s
+                {elapsedMs > 3_000
+                  ? ' — free model is slow; Lifelog falls back locally within ~5s.'
+                  : ''}
+              </p>
             </div>
           ) : error ? (
             <div className="errorbox" role="alert">

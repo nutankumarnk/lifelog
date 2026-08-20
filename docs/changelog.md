@@ -8,6 +8,22 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-08-20 — 1.0.2
+
+### Changed
+
+**Analysis latency capped for free-tier OpenRouter.** Compact minified-JSON
+prompt, `max_tokens` 600, OpenRouter `provider.sort: latency`, hard 5s client
+deadline (timeouts/rate-limits not retried), and the offline fallback warmed in
+parallel with the hosted call. Worst case for a stalled free model is ~5s with
+`meta.degraded: true`, not tens of seconds waiting on a queue.
+
+*Why:* free Gemma endpoints often accept the socket and then stall; AbortSignal
+alone was not enough. Users need a snappy console more than a perfect model
+reply when the host is saturated.
+
+---
+
 ## 2026-08-20 — 1.0.1
 
 ### Changed
