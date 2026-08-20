@@ -8,6 +8,65 @@
  * repairing *meaning* is the intelligence layer's job.
  */
 
+/**
+ * Pulls the assistant text out of an OpenAI-compatible chat completion.
+ *
+ * Newer hosted models (Gemma 4, Gemini) often return `content` as an array of
+ * parts, or put the visible answer next to a `reasoning` field. Treating
+ * anything other than a string as empty made Lifelog throw away a real reply
+ * and tell the user the model did not answer.
+ */
+export function extractChatText(payload: unknown): string {
+  if (typeof payload === 'string') return payload;
+  if (!payload || typeof payload !== 'object') return '';
+
+  const root = payload as Record<string, unknown>;
+  const choices = Array.isArray(root.choices) ? root.choices : [];
+  const choice = (choices[0] && typeof choices[0] === 'object' ? choices[0] : {}) as Record<
+    string,
+    unknown
+  >;
+  const message = (
+    choice.message && typeof choice.message === 'object' ? choice.message : {}
+  ) as Record<string, unknown>;
+
+  const parts = [
+    coerceContent(message.content),
+    coerceContent(choice.text),
+    coerceContent(root.output_text),
+  ].filter((part) => part.trim().length > 0);
+
+  if (parts.length > 0) return parts[0]!;
+
+  // Last resort: some reasoning hosts only populate these when content is empty.
+  const reasoning = coerceContent(message.reasoning) || coerceContent(message.reasoning_content);
+  return reasoning;
+}
+
+function coerceContent(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (!value) return '';
+
+  if (Array.isArray(value)) {
+    return value
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (!part || typeof part !== 'object') return '';
+        const record = part as Record<string, unknown>;
+        return coerceContent(record.text ?? record.content ?? record.output_text ?? '');
+      })
+      .join('');
+  }
+
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return coerceContent(record.text ?? record.content ?? record.output_text ?? '');
+  }
+
+  return '';
+}
+
 /** Removes ```json fences and any leading/trailing commentary. */
 function stripFences(text: string): string {
   const fence = /```(?:json|JSON)?\s*([\s\S]*?)```/.exec(text);

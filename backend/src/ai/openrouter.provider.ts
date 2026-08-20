@@ -8,19 +8,21 @@
  * This file contains no Lifelog business rules. It moves a prompt out and a
  * JSON object back, and turns every failure mode into an `AiProviderError`.
  *
- * Latency notes:
- *   - Free-tier endpoints are often queue-bound. We ask OpenRouter to prefer
- *     low-latency providers, cap output tokens, and skip `response_format`
- *     (which filters out endpoints that would otherwise be faster — Lifelog
- *     already recovers JSON from fenced/prose-wrapped replies).
- *   - Timeouts are not retried. Retrying a saturated free queue multiplies wait
- *     time; the registry falls back to the offline engine instead.
+ * Latency / completeness notes:
+ *   - Gemma 4 thinks by default. Thinking tokens count against `max_tokens`,
+ *     so a 600-token cap often returns an empty `content` field. Lifelog then
+ *     looked like it "failed to send a response." Reasoning is turned off,
+ *     and enough completion tokens are reserved for the JSON.
+ *   - `content` may be a string or an array of parts. Both are read.
+ *   - Empty or unparseable bodies are retried once inside the same deadline.
+ *   - Timeouts and rate limits are not retried. The registry falls back to
+ *     the offline engine instead of waiting on a saturated free queue.
  */
 import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult } from './provider.js';
-import { parseModelJson } from './json.js';
+import { extractChatText, parseModelJson } from './json.js';
 
-/** Enough for a compact analysis JSON. Lower = faster free-tier replies. */
-const MAX_COMPLETION_TOKENS = 600;
+/** Enough for a compact multi-item analysis JSON, with headroom if a host still thinks. */
+const MAX_COMPLETION_TOKENS = 2048;
 
 /**
  * Resolves with `promise`, or rejects with `makeError()` when `ms` elapses.
@@ -57,7 +59,15 @@ export interface OpenRouterOptions {
 }
 
 interface ChatCompletionResponse {
-  choices?: Array<{ message?: { content?: string | null } }>;
+  choices?: Array<{
+    finish_reason?: string | null;
+    text?: string | null;
+    message?: {
+      content?: unknown;
+      reasoning?: unknown;
+      reasoning_content?: unknown;
+    };
+  }>;
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string; code?: string | number };
   model?: string;
@@ -87,11 +97,13 @@ export class OpenRouterProvider implements AiProvider {
       });
     }
 
+    const deadline = Date.now() + this.options.timeoutMs;
+
     // Free-tier hosts sometimes accept the TCP connection and then stall past
     // AbortSignal. Race a hard deadline so Lifelog can fall back instead of
     // leaving the HTTP request open for minutes.
     return await raceTimeout(
-      this.callModel(request),
+      this.callModel(request, deadline),
       this.options.timeoutMs,
       () =>
         new AiProviderError(
@@ -103,40 +115,57 @@ export class OpenRouterProvider implements AiProvider {
     );
   }
 
-  private async callModel(request: AnalysisRequest): Promise<ProviderResult> {
+  private async callModel(request: AnalysisRequest, deadline: number): Promise<ProviderResult> {
     const startedAt = Date.now();
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.options.timeoutMs);
+    const timer = setTimeout(() => controller.abort(), Math.max(1, deadline - Date.now()));
 
-    let response: Response;
     try {
-      response = await this.fetchImpl(`${this.options.baseUrl}/chat/completions`, {
-        method: 'POST',
-        signal: controller.signal,
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.options.apiKey}`,
-          ...(this.options.appUrl ? { 'HTTP-Referer': this.options.appUrl } : {}),
-          ...(this.options.appTitle ? { 'X-Title': this.options.appTitle } : {}),
+      let disableReasoning = true;
+      let response = await this.postChat(request, controller, disableReasoning);
+
+      // Some hosts reject the unified reasoning parameter. Retry without it
+      // rather than failing the whole conversation.
+      if (response.status === 400 && disableReasoning) {
+        disableReasoning = false;
+        response = await this.postChat(request, controller, disableReasoning);
+      }
+
+      if (!response.ok) {
+        throw this.toHttpError(response.status, await this.safeText(response));
+      }
+
+      let payload = await this.readPayload(response);
+      let content = extractChatText(payload);
+      let parsed = parseModelJson(content);
+
+      if (!parsed.ok && Date.now() < deadline - 250) {
+        response = await this.postChat(request, controller, disableReasoning);
+        if (!response.ok) {
+          throw this.toHttpError(response.status, await this.safeText(response));
+        }
+        payload = await this.readPayload(response);
+        content = extractChatText(payload);
+        parsed = parseModelJson(content);
+      }
+
+      if (!parsed.ok) {
+        throw new AiProviderError('BAD_OUTPUT', this.name, `model did not return JSON: ${parsed.error}`, {
+          retryable: true,
+        });
+      }
+
+      return {
+        raw: parsed.value,
+        rawText: content,
+        latencyMs: Date.now() - startedAt,
+        usage: {
+          promptTokens: payload.usage?.prompt_tokens,
+          completionTokens: payload.usage?.completion_tokens,
         },
-        body: JSON.stringify({
-          model: this.options.model,
-          temperature: this.options.temperature,
-          max_tokens: MAX_COMPLETION_TOKENS,
-          // Prefer the fastest host for this model. Do not pass a `models`
-          // fallback array here — on free-tier endpoints it has been observed
-          // to stall the request until our client timeout, while the same
-          // primary model alone answers in 1–3s.
-          provider: {
-            sort: 'latency',
-          },
-          messages: [
-            { role: 'system', content: request.instructions },
-            { role: 'user', content: request.userMessage },
-          ],
-        }),
-      });
+      };
     } catch (error) {
+      if (error instanceof AiProviderError) throw error;
       const aborted = error instanceof Error && error.name === 'AbortError';
       throw new AiProviderError(
         aborted ? 'TIMEOUT' : 'NETWORK',
@@ -147,11 +176,41 @@ export class OpenRouterProvider implements AiProvider {
     } finally {
       clearTimeout(timer);
     }
+  }
 
-    if (!response.ok) {
-      throw this.toHttpError(response.status, await this.safeText(response));
-    }
+  private async postChat(
+    request: AnalysisRequest,
+    controller: AbortController,
+    disableReasoning: boolean,
+  ): Promise<Response> {
+    return await this.fetchImpl(`${this.options.baseUrl}/chat/completions`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.options.apiKey}`,
+        ...(this.options.appUrl ? { 'HTTP-Referer': this.options.appUrl } : {}),
+        ...(this.options.appTitle ? { 'X-Title': this.options.appTitle } : {}),
+      },
+      body: JSON.stringify({
+        model: this.options.model,
+        temperature: this.options.temperature,
+        max_tokens: MAX_COMPLETION_TOKENS,
+        // Gemma 4 / Gemini thinking would otherwise consume the token budget
+        // and leave `message.content` empty.
+        ...(disableReasoning ? { reasoning: { effort: 'none' } } : {}),
+        provider: {
+          allow_fallbacks: true,
+        },
+        messages: [
+          { role: 'system', content: request.instructions },
+          { role: 'user', content: request.userMessage },
+        ],
+      }),
+    });
+  }
 
+  private async readPayload(response: Response): Promise<ChatCompletionResponse> {
     let payload: ChatCompletionResponse;
     try {
       payload = (await response.json()) as ChatCompletionResponse;
@@ -168,23 +227,7 @@ export class OpenRouterProvider implements AiProvider {
       });
     }
 
-    const content = payload.choices?.[0]?.message?.content ?? '';
-    const parsed = parseModelJson(content);
-    if (!parsed.ok) {
-      throw new AiProviderError('BAD_OUTPUT', this.name, `model did not return JSON: ${parsed.error}`, {
-        retryable: true,
-      });
-    }
-
-    return {
-      raw: parsed.value,
-      rawText: content,
-      latencyMs: Date.now() - startedAt,
-      usage: {
-        promptTokens: payload.usage?.prompt_tokens,
-        completionTokens: payload.usage?.completion_tokens,
-      },
-    };
+    return payload;
   }
 
   private toHttpError(status: number, body: string): AiProviderError {
@@ -195,10 +238,15 @@ export class OpenRouterProvider implements AiProvider {
         retryable: false,
       });
     }
-    if (status === 429) {
+    if (status === 402 || status === 429) {
       // Fall back immediately — waiting and retrying a free-tier rate limit is
       // how a 5-second failure becomes a 2-minute one.
       return new AiProviderError('RATE_LIMITED', this.name, 'model host rate limit reached', {
+        retryable: false,
+      });
+    }
+    if (status === 408 || status === 504 || status === 524) {
+      return new AiProviderError('TIMEOUT', this.name, `model host error ${status}`, {
         retryable: false,
       });
     }

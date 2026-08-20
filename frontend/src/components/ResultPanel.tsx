@@ -40,12 +40,14 @@ export function ResultPanel({ result }: { result: AnalyzeResponse }) {
       <header className="result__head">
         <div>
           <span className="label">Intent</span>
-          <strong className="intent">{analysis.intent.replace(/_/g, ' ').toLowerCase()}</strong>
-          <span className="confidence">{Math.round(analysis.intent_confidence * 100)}%</span>
+          <strong className="intent">
+            {(analysis.intent ?? 'UNKNOWN').replace(/_/g, ' ').toLowerCase()}
+          </strong>
+          <span className="confidence">{Math.round((analysis.intent_confidence ?? 0) * 100)}%</span>
         </div>
         <div className="result__meta">
           <span title="Which adapter produced this reading">{meta.provider}</span>
-          <span title="Model identifier">{meta.model}</span>
+          <span title="Model identifier">{(meta.model ?? '').replace(/:free$/, '') || meta.model}</span>
           <span>{meta.latency_ms} ms</span>
           <span title="Detected language">{analysis.language}</span>
         </div>
@@ -63,7 +65,7 @@ export function ResultPanel({ result }: { result: AnalyzeResponse }) {
         </p>
       ) : (
         <p className="notice notice--ok">
-          Read by the AI model ({meta.model.replace(/:free$/, '')}).
+          Read by the AI model ({(meta.model ?? '').replace(/:free$/, '') || 'hosted'}).
         </p>
       )}
 

@@ -205,6 +205,33 @@ describe('Scenario 14 — invalid AI JSON', () => {
     expect(typeof result.analysis.items[0]!.confidence).toBe('number');
   });
 
+  it('repairs sloppy item details instead of failing the request', async () => {
+    const provider = MockProvider.respondingWith({
+      intent: 'CAPTURE_TASK',
+      items: [
+        {
+          type: 'TASK',
+          title: 'Call the bank',
+          source_text: 'I need to call the bank',
+          details: { status: 'open', priority: 'high', intensity: 9, explicit: 'true' },
+        },
+      ],
+    });
+
+    const result = await understandConversation(
+      { primary: provider, fallback: null, maxRetries: 0 },
+      { text: 'I need to call the bank.', now: FIXED_NOW, timezone: null },
+    );
+
+    expect(result.degraded).toBe(false);
+    expect(result.analysis.items[0]!.details).toMatchObject({
+      status: 'OPEN',
+      priority: 'HIGH',
+      intensity: 1,
+      explicit: true,
+    });
+  });
+
   it('drops items whose type cannot be mapped at all', async () => {
     const provider = MockProvider.respondingWith({
       intent: 'LOG',

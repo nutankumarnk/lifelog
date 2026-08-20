@@ -12,7 +12,7 @@ import { coerceEntityKind, coerceIntent, coerceItemType, normalizeEntities, norm
 import { deduplicateItems, groundAnalysis } from '../../src/intelligence/grounding.js';
 import { evaluateFollowUp } from '../../src/intelligence/follow-up.js';
 import { calibrate, LOW_CONFIDENCE_THRESHOLD, MAX_CONFIDENCE } from '../../src/intelligence/confidence.js';
-import { parseModelJson } from '../../src/ai/json.js';
+import { parseModelJson, extractChatText } from '../../src/ai/json.js';
 import { EMPTY_TEMPORAL, type Item } from '../../src/schemas/analysis.schema.js';
 import { buildInstructions } from '../../src/intelligence/prompt.js';
 import { QUESTION_MARKERS, TASK_MARKERS, containsAny, matchesIn } from '../../src/intelligence/lexicon.js';
@@ -506,6 +506,16 @@ describe('model JSON recovery', () => {
 
   it('reports failure on empty output', () => {
     expect(parseModelJson('').ok).toBe(false);
+  });
+
+  it('reads OpenAI-style string content and Gemini-style part arrays', () => {
+    expect(extractChatText({ choices: [{ message: { content: '{"a":1}' } }] })).toBe('{"a":1}');
+    expect(
+      extractChatText({
+        choices: [{ message: { content: [{ type: 'text', text: '{"a":1}' }] } }],
+      }),
+    ).toBe('{"a":1}');
+    expect(extractChatText({ choices: [{ message: { content: '' } }] })).toBe('');
   });
 });
 

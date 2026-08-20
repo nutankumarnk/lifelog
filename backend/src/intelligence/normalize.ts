@@ -15,6 +15,9 @@ import {
   EntityKindEnum,
   IntentEnum,
   ItemTypeEnum,
+  PriorityEnum,
+  SentimentEnum,
+  TaskStatusEnum,
   type Entity,
   type EntityKind,
   type Intent,
@@ -290,6 +293,53 @@ function normalizeMentions(value: unknown): Array<{ start: number; end: number }
     .filter((mention): mention is { start: number; end: number } => mention !== null);
 }
 
+/**
+ * Type-specific payloads must still pass the strict analysis schema. Models
+ * send `"status": "open"`, intensity 5/10, or a stringy `explicit`. Repair
+ * those here so a usable reading is not turned into an HTTP 500.
+ */
+function sanitizeItemDetails(raw: Record<string, unknown>): Record<string, unknown> {
+  const details = { ...raw };
+
+  if (details.status !== undefined) {
+    const parsed = TaskStatusEnum.safeParse(String(details.status).trim().toUpperCase());
+    if (parsed.success) details.status = parsed.data;
+    else delete details.status;
+  }
+
+  if (details.priority !== undefined) {
+    const parsed = PriorityEnum.safeParse(String(details.priority).trim().toUpperCase());
+    if (parsed.success) details.priority = parsed.data;
+    else delete details.priority;
+  }
+
+  if (details.sentiment !== undefined) {
+    const parsed = SentimentEnum.safeParse(String(details.sentiment).trim().toUpperCase());
+    if (parsed.success) details.sentiment = parsed.data;
+    else delete details.sentiment;
+  }
+
+  if (details.intensity !== undefined) {
+    details.intensity = clamp01(asNumber(details.intensity, 0.5));
+  }
+
+  if (details.significance !== undefined) {
+    details.significance = clamp01(asNumber(details.significance, 0.5));
+  }
+
+  if (details.explicit !== undefined) {
+    const value = details.explicit;
+    details.explicit = value === true || value === 1 || String(value).toLowerCase() === 'true';
+  }
+
+  if (details.alternatives !== undefined && !Array.isArray(details.alternatives)) {
+    const text = asString(details.alternatives);
+    details.alternatives = text ? [text] : [];
+  }
+
+  return details;
+}
+
 // ---------------------------------------------------------------------------
 // Items
 // ---------------------------------------------------------------------------
@@ -353,7 +403,7 @@ export function normalizeItems(rawItems: unknown, idMap: Map<string, string>): N
       })(),
       temporal: normalizeTemporalShell(record.temporal),
       entity_ids: [...new Set(validEntityIds)],
-      details: asRecord(record.details),
+      details: sanitizeItemDetails(asRecord(record.details)),
       confidence: clamp01(asNumber(record.confidence, 0.5)),
     });
   }

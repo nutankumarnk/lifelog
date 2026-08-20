@@ -124,9 +124,10 @@ things.
 
 ### Network and timeout errors
 
-Every provider call races a hard deadline (`AI_TIMEOUT_MS`, default 5s) in
-addition to `AbortSignal`. Free-tier hosts sometimes accept the socket and then
-stall without delivering a body. Retry backoff is bounded at 2s; timeouts and
+Every provider call races a hard deadline (`AI_TIMEOUT_MS`, default 20s) in
+addition to `AbortSignal`. Gemma 4 thinking is disabled so completion tokens are
+spent on JSON, not hidden reasoning. Empty or unparseable hosted bodies are
+retried once inside that deadline. Retry backoff is bounded at 2s; timeouts and
 rate limits are not retried so a saturated free queue cannot multiply wait time.
 The offline fallback is warmed in parallel with the primary so degradation does
 not add a second sequential wait.

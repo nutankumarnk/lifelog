@@ -64,6 +64,9 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
         }),
       },
     },
+    // Longer than AI_TIMEOUT_MS so a slow hosted reply is not killed by Node.
+    requestTimeout: 120_000,
+    connectionTimeout: 0,
     // Reject oversized bodies at the transport layer, before any parsing.
     bodyLimit: config.MAX_INPUT_CHARS * 4 + 4096,
     trustProxy: config.isProduction,

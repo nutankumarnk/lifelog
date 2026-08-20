@@ -8,6 +8,26 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-08-20 — 1.1.2
+
+### Fixed
+
+**Hosted model replies were dropped, so the console often said the AI did not
+answer.** Gemma 4 spends `max_tokens` on thinking unless reasoning is turned
+off; with a 600-token cap that left `message.content` empty. Lifelog also
+ignored array-shaped content, and a slightly sloppy JSON field (status `open`,
+intensity `9`) could 500 the whole request after the model had already answered.
+
+The OpenRouter adapter now disables reasoning, reserves 2048 completion tokens,
+reads string or part-array content, retries an empty body once, and the
+pipeline repairs details / falls back to the offline engine instead of failing
+the HTTP response.
+
+*Why:* users kept seeing no analysis, or "the AI model did not answer", on
+messages the model had actually handled.
+
+---
+
 ## 2026-08-20 — 1.1.1
 
 ### Fixed

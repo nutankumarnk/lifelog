@@ -686,6 +686,10 @@ button:focus-visible {
   color: var(--text-dim);
 }
 
+.errorbox .primary {
+  margin-top: 12px;
+}
+
 .loading .skeleton {
   height: 14px;
   border-radius: 4px;

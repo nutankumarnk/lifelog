@@ -184,6 +184,59 @@ function processRawExtraction(
   };
 }
 
+function assembleCandidate(
+  text: string,
+  segments: ReturnType<typeof segmentConversation>,
+  draft: ProcessedDraft,
+  flags: {
+    usedHostedModel: boolean;
+    degraded: boolean;
+    providerName: string;
+    algorithmConfidence: number;
+  },
+) {
+  const gaps: AnalysisGap[] = detectGaps(draft.items, { text, intent: draft.intent });
+  const algorithmConfidence = flags.usedHostedModel
+    ? flags.algorithmConfidence
+    : scoreAlgorithmConfidence(draft.items, gaps);
+
+  const emotionalImpact: EmotionalImpact[] = inferEmotionalImpact(text, draft.items, draft.entities);
+  const stance = detectStance(text, draft.intent, draft.items);
+  const { missing, followUp } = evaluateFollowUp(
+    draft.items,
+    { intent: draft.intent, text },
+    normalizeMissingInformation(draft.missingRaw),
+  );
+
+  return {
+    candidate: {
+      schema_version: ANALYSIS_SCHEMA_VERSION,
+      intent: draft.intent,
+      intent_confidence: draft.intentConfidence,
+      stance: stance.stance,
+      stance_confidence: stance.confidence,
+      language: detectLanguage(text, draft.languageHint),
+      summary: draft.summary,
+      segments,
+      entities: draft.entities,
+      items: draft.items,
+      emotional_impact: emotionalImpact,
+      gaps,
+      algorithm_confidence: algorithmConfidence,
+      reconciliation: {
+        used_ai_teacher: flags.usedHostedModel,
+        skipped_ai: false,
+        disagreement_count: 0,
+        winners: [flags.degraded ? 'offline-engine' : flags.providerName],
+      },
+      missing_information: missing,
+      follow_up: followUp,
+      warnings: draft.warnings,
+    },
+    algorithmConfidence,
+  };
+}
+
 /**
  * Runs a conversation through the full understanding pipeline.
  *
@@ -201,25 +254,43 @@ export async function understandConversation(
   const instructions = buildInstructions();
   const userMessage = buildUserMessage(request);
 
-  // --- Ask the provider (AI-first) ---------------------------------------
-  const providerResult = await runProviders(runtime, {
+  const providerRequest = {
     text: request.text,
     now: request.now,
     timezone: request.timezone,
     instructions,
     userMessage,
-  });
+  };
 
-  let draft = processRawExtraction(
-    request.text,
-    request.now,
-    request.timezone,
-    (providerResult.raw ?? {}) as Record<string, unknown>,
-    segments,
-  );
+  const buildDraft = (raw: unknown): ProcessedDraft =>
+    processRawExtraction(
+      request.text,
+      request.now,
+      request.timezone,
+      (raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>,
+      segments,
+    );
 
-  const degraded = providerResult.degraded;
-  const usedHostedModel = !degraded && runtime.primary.name === 'openrouter';
+  // --- Ask the provider (AI-first) ---------------------------------------
+  let providerResult = await runProviders(runtime, providerRequest);
+
+  let draft: ProcessedDraft;
+  try {
+    draft = buildDraft(providerResult.raw);
+  } catch (error) {
+    // A hosted reply that blows up during normalisation must not 500 the
+    // request. Fall back to the offline engine so the user still gets an answer.
+    if (!runtime.fallback || providerResult.provider === runtime.fallback.name) throw error;
+    providerResult = await runProviders(
+      { primary: runtime.fallback, fallback: null, maxRetries: 0 },
+      providerRequest,
+    );
+    draft = buildDraft(providerResult.raw);
+    providerResult = { ...providerResult, degraded: true };
+  }
+
+  let degraded = providerResult.degraded;
+  let usedHostedModel = !degraded && runtime.primary.name === 'openrouter';
 
   if (degraded) {
     const failure = providerResult.attempts.find((attempt) => attempt.status === 'error');
@@ -228,7 +299,7 @@ export async function understandConversation(
       message: `the AI model was unavailable; answered by the ${providerResult.provider} engine`,
       detail: {
         failedProvider: failure?.provider ?? null,
-        reason: failure?.errorKind ?? null,
+        reason: failure?.errorKind ?? 'PIPELINE_INVALID',
         detail: failure?.errorMessage ?? null,
       },
     });
@@ -248,13 +319,7 @@ export async function understandConversation(
         instructions,
         userMessage,
       });
-      const localDraft = processRawExtraction(
-        request.text,
-        request.now,
-        request.timezone,
-        (localResult.raw ?? {}) as Record<string, unknown>,
-        segments,
-      );
+      const localDraft = buildDraft(localResult.raw);
       const localGaps = detectGaps(localDraft.items, {
         text: request.text,
         intent: localDraft.intent,
@@ -265,54 +330,38 @@ export async function understandConversation(
     }
   }
 
-  const gaps: AnalysisGap[] = detectGaps(draft.items, {
-    text: request.text,
-    intent: draft.intent,
+  let assembled = assembleCandidate(request.text, segments, draft, {
+    usedHostedModel,
+    degraded,
+    providerName: providerResult.provider,
+    algorithmConfidence,
   });
-  if (!usedHostedModel) {
-    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
+  algorithmConfidence = assembled.algorithmConfidence;
+
+  let parsed = AnalysisSchema.safeParse(assembled.candidate);
+  if (!parsed.success && runtime.fallback && providerResult.provider !== runtime.fallback.name) {
+    providerResult = await runProviders(
+      { primary: runtime.fallback, fallback: null, maxRetries: 0 },
+      providerRequest,
+    );
+    draft = buildDraft(providerResult.raw);
+    degraded = true;
+    usedHostedModel = false;
+    draft.warnings.push({
+      code: 'PROVIDER_DEGRADED',
+      message: `the AI model reply could not be used; answered by the ${providerResult.provider} engine`,
+      detail: { reason: 'PIPELINE_INVALID' },
+    });
+    assembled = assembleCandidate(request.text, segments, draft, {
+      usedHostedModel,
+      degraded,
+      providerName: providerResult.provider,
+      algorithmConfidence: 0.5,
+    });
+    algorithmConfidence = assembled.algorithmConfidence;
+    parsed = AnalysisSchema.safeParse(assembled.candidate);
   }
 
-  const emotionalImpact: EmotionalImpact[] = inferEmotionalImpact(
-    request.text,
-    draft.items,
-    draft.entities,
-  );
-
-  const stance = detectStance(request.text, draft.intent, draft.items);
-
-  const { missing, followUp } = evaluateFollowUp(
-    draft.items,
-    { intent: draft.intent, text: request.text },
-    normalizeMissingInformation(draft.missingRaw),
-  );
-
-  const candidate = {
-    schema_version: ANALYSIS_SCHEMA_VERSION,
-    intent: draft.intent,
-    intent_confidence: draft.intentConfidence,
-    stance: stance.stance,
-    stance_confidence: stance.confidence,
-    language: detectLanguage(request.text, draft.languageHint),
-    summary: draft.summary,
-    segments,
-    entities: draft.entities,
-    items: draft.items,
-    emotional_impact: emotionalImpact,
-    gaps,
-    algorithm_confidence: algorithmConfidence,
-    reconciliation: {
-      used_ai_teacher: usedHostedModel,
-      skipped_ai: false,
-      disagreement_count: 0,
-      winners: [degraded ? 'offline-engine' : providerResult.provider],
-    },
-    missing_information: missing,
-    follow_up: followUp,
-    warnings: draft.warnings,
-  };
-
-  const parsed = AnalysisSchema.safeParse(candidate);
   if (!parsed.success) {
     throw new Error(
       `Pipeline produced an invalid analysis: ${parsed.error.issues

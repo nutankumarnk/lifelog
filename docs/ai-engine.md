@@ -16,10 +16,11 @@ swappable.** Everything in this document is about keeping that true.
 | Hosted provider | OpenRouter, OpenAI-compatible `/chat/completions` |
 | Default model | `google/gemma-4-26b-a4b-it:free` |
 | Temperature | 0.1 |
-| Timeout | 5s (then offline fallback; free-tier queues often stall longer) |
+| Timeout | 20s (then offline fallback; empty hosted bodies are retried once first) |
 | Retries | 0 by default — timeouts/rate-limits are not retried |
 | Fallback | `local` — Lifelog's own offline rule engine (warmed in parallel) |
 | SDK | None. Plain `fetch`. |
+| Hosted output | Reasoning disabled; 2048 completion tokens; string or part-array `content` |
 
 Configured by `AI_PROVIDER`, `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`,
 `AI_TEMPERATURE`. The key belongs in `secrets/API-KEYS.md`, never in `.env`.
@@ -158,8 +159,10 @@ Models return almost-JSON. `ai/json.ts` recovers from:
 
 If nothing parses, the provider raises `BAD_OUTPUT` and the registry falls back.
 After parsing, `RawModelAnalysisSchema` accepts the loose shape and normalisation
-repairs it. The strict `AnalysisSchema` is applied only at the very end — and if
-*that* fails, it is a Lifelog bug and it throws.
+repairs it. The strict `AnalysisSchema` is applied only at the very end. If that
+fails on a hosted reply, Lifelog falls back to the offline engine rather than
+500ing the request. A failure after the offline engine has already answered is
+still treated as a Lifelog bug and throws.
 
 ---
 
@@ -171,10 +174,12 @@ roughly linear in message length and predictable.
 
 Typical hosted latency on a short message is a few hundred milliseconds to a
 couple of seconds when the free endpoint is healthy. Free-tier queues can stall
-far longer; the 5s timeout exists so the UI never hangs — Lifelog then answers
-with the offline engine (`meta.degraded: true`). The local provider answers in
-single-digit milliseconds, and it is warmed in parallel with the hosted call so
-degradation does not add a second wait. The whole test suite runs against local.
+far longer; the 20s timeout exists so the UI never hangs — Lifelog then answers
+with the offline engine (`meta.degraded: true`). Gemma 4 thinking is disabled so
+the token budget is spent on the JSON answer, not on hidden reasoning. The local
+provider answers in single-digit milliseconds, and it is warmed in parallel with
+the hosted call so degradation does not add a second wait. The whole test suite
+runs against local.
 
 The largest available cost lever is not the model — it is not calling one.
 Lifelog's rule engine already handles a meaningful share of simple messages

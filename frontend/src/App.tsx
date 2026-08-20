@@ -108,7 +108,6 @@ export function App() {
           detail: 'The backend did not respond. Check that it is running on port 4319.',
         });
       }
-      setResult(null);
     } finally {
       if (!controller.signal.aborted) setLoading(false);
     }
@@ -196,32 +195,40 @@ export function App() {
                 <div className="skeleton skeleton--short" />
                 <p className="muted">
                   Asking the AI model… {(elapsedMs / 1000).toFixed(1)}s
-                  {elapsedMs > 4_000
-                    ? ' — the free model is busy; Lifelog will use its offline engine if it does not answer.'
+                  {elapsedMs > 12_000
+                    ? ' — still waiting on the hosted model. If it does not finish, Lifelog will answer from the offline engine.'
                     : ''}
                 </p>
               </div>
-            ) : error ? (
-              <div className="errorbox" role="alert">
-                <h3>{error.title}</h3>
-                <p>{error.detail}</p>
-                {error.requestId ? (
-                  <p className="muted">
-                    Request id <code>{error.requestId}</code>
-                  </p>
-                ) : null}
-              </div>
-            ) : result ? (
-              <ResultPanel result={result} />
             ) : (
-              <div className="empty empty--initial">
-                <h3>Nothing analyzed yet</h3>
-                <p>
-                  Type a message or pick a sample. Lifelog will break it into people, places, events,
-                  tasks, reminders, decisions and feelings — and show you the exact words each one
-                  came from.
-                </p>
-              </div>
+              <>
+                {error ? (
+                  <div className="errorbox" role="alert">
+                    <h3>{error.title}</h3>
+                    <p>{error.detail}</p>
+                    {error.requestId ? (
+                      <p className="muted">
+                        Request id <code>{error.requestId}</code>
+                      </p>
+                    ) : null}
+                    <button type="button" className="primary" onClick={() => void submit()}>
+                      Try again
+                    </button>
+                  </div>
+                ) : null}
+                {result ? (
+                  <ResultPanel result={result} />
+                ) : !error ? (
+                  <div className="empty empty--initial">
+                    <h3>Nothing analyzed yet</h3>
+                    <p>
+                      Type a message or pick a sample. Lifelog will break it into people, places, events,
+                      tasks, reminders, decisions and feelings — and show you the exact words each one
+                      came from.
+                    </p>
+                  </div>
+                ) : null}
+              </>
             )}
           </section>
 
