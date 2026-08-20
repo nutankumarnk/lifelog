@@ -55,7 +55,7 @@ const EnvSchema = z.object({
   AI_PROVIDER: z.enum(['auto', 'openrouter', 'local', 'mock']).default('auto'),
   AI_MODEL: z.string().default('google/gemma-4-26b-a4b-it:free'),
   /** Hard cap on the hosted model. Keep short: free-tier queues stall often. */
-  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(5_000),
+  AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(20_000),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(0),
   AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),
   OPENROUTER_API_KEY: z.string().min(1).optional(),

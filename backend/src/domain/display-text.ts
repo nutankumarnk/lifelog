@@ -11,9 +11,13 @@ const SHORTCUTS: Array<[RegExp, string]> = [
   [/\btomo\b/gi, 'tomorrow'],
   [/\btmrw\b/gi, 'tomorrow'],
   [/\btmr\b/gi, 'tomorrow'],
+  [/\btommorrow\b/gi, 'tomorrow'],
+  [/\btommorow\b/gi, 'tomorrow'],
   [/\btoday\b/gi, 'today'],
   [/\btnite\b/gi, 'tonight'],
   [/\btonite\b/gi, 'tonight'],
+  [/\babu year ago\b/gi, 'a year ago'],
+  [/\ba year ago\b/gi, 'a year ago'],
   [/\bpls\b/gi, 'please'],
   [/\bplz\b/gi, 'please'],
   [/\bu\b/gi, 'you'],
@@ -27,7 +31,7 @@ const REMINDER_LEAD =
   /^(remind me to|remind me|reminder to|set a reminder to|set reminder to|alert me to|ping me to|notify me to)\s+/i;
 
 const TASK_LEAD =
-  /^(i need to|i need|i have to|i must|i should|i gotta|i got to|need to|need|have to|must|should|make sure to|don't forget to|dont forget to)\s+/i;
+  /^(i need to|i need|i have to|i must|i should|i gotta|i got to|need to|need|have to|must|should|want to|i want to|i want|make sure to|don't forget to|dont forget to)\s+/i;
 
 /** Expands common shortcuts without changing meaning. */
 export function expandShortcuts(text: string): string {
@@ -116,7 +120,12 @@ export function formatReminderDisplay(sourceOrTitle: string, entities: Entity[] 
  */
 export function formatTaskDisplay(sourceOrTitle: string, entities: Entity[] = []): DisplayParts {
   let body = expandShortcuts(sourceOrTitle);
-  body = body.replace(TASK_LEAD, '');
+  // Strip stacked obligation leads: "i need want to …" → "…"
+  for (let i = 0; i < 3; i += 1) {
+    const next = body.replace(TASK_LEAD, '');
+    if (next === body) break;
+    body = next;
+  }
   body = preferEntitySpellings(body, entities);
   body = body.replace(/\b(monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/gi, (day) =>
     sentenceCase(day),

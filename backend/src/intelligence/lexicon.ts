@@ -286,6 +286,10 @@ export const EXPERIENCE_VERBS = [
   'joined',
   'graduated',
   'married',
+  'buy',
+  'bought',
+  'goes',
+  'gift',
 ];
 
 /** Prepositions that usually introduce a place. */

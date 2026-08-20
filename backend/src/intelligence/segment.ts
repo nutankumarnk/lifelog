@@ -78,13 +78,60 @@ function splitSentences(text: string): Piece[] {
 /** Conjunctions worth splitting on, when what follows looks like its own clause. */
 const CLAUSE_SPLITTERS = /\b(?:,?\s+and\s+(?:i|we|then|also)\s|,?\s+but\s+(?:i|we)\s|;\s*|,?\s+also\s+i\s)/gi;
 
+/** Mid-sentence action starts that usually begin a new fact. */
+const ACTION_BOUNDARY = /\b(?:i need|i want|need to|remind me|i have to|i must)\b/gi;
+
 /** A fragment only becomes its own segment if it plausibly contains a predicate. */
 function looksLikeClause(text: string): boolean {
   const trimmed = text.trim();
   if (trimmed.split(/\s+/).length < 3) return false;
-  return /\b(?:need|have|has|must|should|will|am|is|are|was|were|met|saw|went|feel|felt|want|remind|plan|going|decided|finished|got|called|booked|bought|told|made|took)\b/i.test(
+  return /\b(?:need|have|has|must|should|will|am|is|are|was|were|met|saw|went|goes|go|feel|felt|want|remind|plan|going|decided|finished|got|called|booked|bought|buy|told|made|took|gift|pack|packed|birthday)\b/i.test(
     trimmed,
   );
+}
+
+/** Split a piece on commas when both sides look like real clauses. */
+function splitOnCommas(piece: Piece): Piece[] {
+  if (!piece.text.includes(',')) return [piece];
+  const parts: Piece[] = [];
+  let cursor = 0;
+  for (let i = 0; i < piece.text.length; i += 1) {
+    if (piece.text[i] !== ',') continue;
+    const left = piece.text.slice(cursor, i);
+    const right = piece.text.slice(i + 1);
+    if (looksLikeClause(left) && looksLikeClause(right)) {
+      parts.push({ text: left, start: piece.start + cursor, end: piece.start + i });
+      cursor = i + 1;
+    }
+  }
+  if (parts.length === 0) return [piece];
+  parts.push({ text: piece.text.slice(cursor), start: piece.start + cursor, end: piece.end });
+  return parts;
+}
+
+/** Split before obligation / reminder phrasing that starts a new fact. */
+function splitOnActionBoundaries(piece: Piece): Piece[] {
+  ACTION_BOUNDARY.lastIndex = 0;
+  const cuts: number[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = ACTION_BOUNDARY.exec(piece.text)) !== null) {
+    if (match.index > 0) cuts.push(match.index);
+  }
+  if (cuts.length === 0) return [piece];
+
+  const parts: Piece[] = [];
+  let cursor = 0;
+  for (const cut of cuts) {
+    const left = piece.text.slice(cursor, cut);
+    const right = piece.text.slice(cut);
+    if (looksLikeClause(left) && looksLikeClause(right)) {
+      parts.push({ text: left, start: piece.start + cursor, end: piece.start + cut });
+      cursor = cut;
+    }
+  }
+  if (parts.length === 0) return [piece];
+  parts.push({ text: piece.text.slice(cursor), start: piece.start + cursor, end: piece.end });
+  return parts;
 }
 
 /** Second pass: break a long sentence at conjunctions that join real clauses. */
@@ -110,9 +157,9 @@ function splitClauses(piece: Piece): Piece[] {
     }
   }
 
-  if (pieces.length === 0) return [piece];
-  pieces.push({ text: piece.text.slice(cursor), start: piece.start + cursor, end: piece.end });
-  return pieces;
+  const afterConjunction = pieces.length === 0 ? [piece] : [...pieces, { text: piece.text.slice(cursor), start: piece.start + cursor, end: piece.end }];
+
+  return afterConjunction.flatMap(splitOnCommas).flatMap(splitOnActionBoundaries);
 }
 
 /**

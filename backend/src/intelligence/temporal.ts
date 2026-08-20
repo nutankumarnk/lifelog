@@ -73,13 +73,14 @@ const TEMPORAL_PATTERNS: RegExp[] = [
   /\b(?:next|last|this|coming|past|previous)\s+(?:week|month|year|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday|mon|tue|wed|thu|fri|sat|sun)\b/i,
   /\b(?:in|after)\s+(?:\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple of|few)\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\b/i,
   /\b(?:\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple of|few)\s+(?:minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years)\s+ago\b/i,
+  /\b(?:abu\s+)?(?:a\s+)?year\s+ago\b/i,
   /\b(?:every|each)\s+(?:day|morning|evening|night|week|month|year|monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:on|by|before|after|until|till)\s+(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?\b/i,
   /\b\d{1,2}(?:st|nd|rd|th)?\s+(?:january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec)(?:,?\s*\d{4})?\b/i,
   /\b\d{1,2}\s*(?::\s*\d{2})?\s*(?:am|pm)\b/i,
   /\b\d{1,2}:\d{2}\b/,
-  /\b(?:tomorrow|yesterday|today|tonight|tomorrow morning|this morning|this afternoon|this evening|last night)\b/i,
+  /\b(?:tomorrow|tommorrow|tommorow|yesterday|today|tonight|tomorrow morning|this morning|this afternoon|this evening|last night)\b/i,
   /\b(?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)\b/i,
   /\b(?:this|next|last)\s+(?:january|february|march|april|may|june|july|august|september|october|november|december)\b/i,
   /\b(?:kal|aaj|parso)\b/i, // Hinglish: yesterday/tomorrow, today, day before/after.
@@ -225,6 +226,8 @@ export function resolvePhrase(phrase: string, now: Date): Resolution {
     yesterday: { offset: -1, tense: 'PAST', precision: 'DAY' },
     'last night': { offset: -1, tense: 'PAST', precision: 'DAY' },
     tomorrow: { offset: 1, tense: 'FUTURE', precision: 'DAY' },
+    tommorrow: { offset: 1, tense: 'FUTURE', precision: 'DAY' },
+    tommorow: { offset: 1, tense: 'FUTURE', precision: 'DAY' },
     'tomorrow morning': { offset: 1, tense: 'FUTURE', precision: 'DAY' },
     'day after tomorrow': { offset: 2, tense: 'FUTURE', precision: 'DAY' },
     'the day after tomorrow': { offset: 2, tense: 'FUTURE', precision: 'DAY' },
@@ -256,7 +259,19 @@ export function resolvePhrase(phrase: string, now: Date): Resolution {
   const UNIT = String.raw`minute|minutes|hour|hours|day|days|week|weeks|month|months|year|years`;
   const relative = new RegExp(`^(?:in|after)\\s+(${COUNT})\\s+(${UNIT})$`).exec(text);
   const ago = new RegExp(`^(${COUNT})\\s+(${UNIT})\\s+ago$`).exec(text);
+  const abuYear = /^(?:abu\s+)?(?:a\s+)?year\s+ago$/.exec(text);
   const offsetMatch = relative ?? ago;
+
+  if (abuYear) {
+    return {
+      resolved: toIsoDate(addDays(today, -365)),
+      resolvedEnd: null,
+      precision: 'YEAR' as TemporalPrecision,
+      tense: 'PAST' as Tense,
+      recurrence: null,
+      confidence: 0.7,
+    };
+  }
 
   if (offsetMatch?.[1] && offsetMatch[2]) {
     const sign = ago ? -1 : 1;

@@ -8,6 +8,22 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-08-20 — 1.1.1
+
+### Fixed
+
+**Complex raw messages were not recognized when free Gemma was rate-limited.**
+The teacher path fell back to a weak single-item local draft. Gap handling now
+prefers a full hosted extract when needed, skips AI for soft gaps (e.g. pronouns
+alone), raises the free-tier timeout to 20s, and the segmenter splits comma /
+action-boundary multi-fact lines so the offline algorithm recovers past events,
+birthdays, and tasks without the model.
+
+*Why:* user message about a nephew toy / birthday / gift-pack failed with
+`teacher unavailable` under OpenRouter free rate limits.
+
+---
+
 ## 2026-08-20 — 1.1.0
 
 ### Added

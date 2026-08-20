@@ -11,7 +11,6 @@
 import { LocalRuleProvider } from '../ai/local.provider.js';
 import { runProviders, type AiRuntimeOptions, type ProviderAttempt } from '../ai/registry.js';
 import { enrichActionItems } from '../domain/action-items.js';
-import { loadConfig } from '../config/env.js';
 import {
   AnalysisSchema,
   ANALYSIS_SCHEMA_VERSION,
@@ -43,21 +42,9 @@ import {
   normalizeItems,
   normalizeMissingInformation,
 } from './normalize.js';
-import {
-  defaultPatternStorePath,
-  learnFromDisagreements,
-  loadPatternStore,
-  savePatternStore,
-} from './pattern-store.js';
 import { buildInstructions, buildUserMessage } from './prompt.js';
-import { extractTeacherPatches, reconcileWithTeacher } from './reconcile.js';
 import { segmentConversation } from './segment.js';
 import { detectStance } from './stance.js';
-import {
-  buildTeacherInstructions,
-  buildTeacherUserMessage,
-  toTeacherDraft,
-} from './teacher-prompt.js';
 
 export interface UnderstandRequest {
   text: string;
@@ -234,10 +221,21 @@ export async function understandConversation(
   let algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
   const stanceDraft = detectStance(request.text, draft.intent, draft.items);
 
+  /** Gaps that actually need a hosted model — pronouns alone are not enough. */
+  const AI_WORTHY_GAPS = new Set([
+    'MULTI_FACT_SPLIT',
+    'REMINDER_NOT_CAPTURED',
+    'FEELING_NOT_SPLIT',
+    'UNGROUNDED_ITEM',
+    'REMINDER_MISSING_TIME',
+  ]);
+  const needsHostedHelp =
+    gaps.some((gap) => AI_WORTHY_GAPS.has(gap.code)) || algorithmConfidence < 0.55;
+
   const primaryName = runtime.primary.name;
   const honorScriptedPrimary = primaryName === 'mock' || primaryName === 'local';
   const canSkipHosted =
-    !honorScriptedPrimary && algorithmConfidence >= SKIP_AI_CONFIDENCE && gaps.length === 0;
+    !honorScriptedPrimary && algorithmConfidence >= SKIP_AI_CONFIDENCE && !needsHostedHelp;
 
   let providerName = draftProviderResult.provider;
   let providerModel = draftProviderResult.model;
@@ -292,86 +290,62 @@ export async function understandConversation(
     algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
     emotionalImpact = inferEmotionalImpact(request.text, draft.items, draft.entities);
     winners = [providerResult.degraded ? 'algorithm-fallback' : 'primary'];
-  } else if (gaps.length > 0 && runtime.primary.isAvailable()) {
-    // Hosted teacher for gaps only.
-    usedAiTeacher = true;
-    const teacherDraft = toTeacherDraft({
-      intent: draft.intent,
-      stance: stanceDraft.stance,
-      confidence: algorithmConfidence,
-      entities: draft.entities.map((e) => ({ id: e.id, name: e.name, kind: e.kind })),
-      items: draft.items,
-      gaps,
-    });
-    const teacherResult = await runProviders(runtime, {
+  } else if (needsHostedHelp && runtime.primary.isAvailable()) {
+    // Complex / multi-fact messages need a full hosted reading. The teacher
+    // patch path is too brittle on free-tier hosts (timeouts return the local
+    // fallback, which we already have as the draft). Prefer full extract.
+    const providerResult = await runProviders(runtime, {
       text: request.text,
       now: request.now,
       timezone: request.timezone,
-      instructions: buildTeacherInstructions(),
-      userMessage: buildTeacherUserMessage({
-        text: request.text,
-        now: request.now,
-        timezone: request.timezone,
-        draft: teacherDraft,
-      }),
+      instructions: fullInstructions,
+      userMessage: fullUserMessage,
     });
-    attempts = [...attempts, ...teacherResult.attempts];
-    rawModelOutput = teacherResult.raw;
-    providerName = teacherResult.provider;
-    providerModel = teacherResult.model;
-    degraded = teacherResult.degraded;
+    attempts = [...attempts, ...providerResult.attempts];
+    rawModelOutput = providerResult.raw;
+    providerName = providerResult.provider;
+    providerModel = providerResult.model;
+    degraded = providerResult.degraded;
 
-    if (teacherResult.degraded) {
+    if (providerResult.degraded) {
       draft.warnings.push({
         code: 'PROVIDER_DEGRADED',
-        message: `teacher unavailable; kept algorithm draft from ${draftProviderResult.provider}`,
+        message: `hosted model unavailable for a complex message; kept algorithm draft`,
+        detail: {
+          failedProvider: providerResult.attempts.find((a) => a.status === 'error')?.provider ?? null,
+          reason: providerResult.attempts.find((a) => a.status === 'error')?.errorKind ?? null,
+          gaps: gaps.map((gap) => gap.code),
+        },
       });
       winners = ['algorithm'];
     } else {
-      const patches = extractTeacherPatches(teacherResult.raw);
-      const reconciled = reconcileWithTeacher({
-        text: request.text,
-        intent: draft.intent,
-        stance: stanceDraft.stance,
-        items: draft.items,
-        entities: draft.entities,
-        emotionalImpact,
-        gaps,
-        patches,
-      });
-      draft.warnings.push(...reconciled.warnings);
-      draft.intent = reconciled.intent;
-      draft.items = enrichActionItems(reconciled.items, {
-        text: request.text,
-        entities: reconciled.entities,
-      });
-      // Re-ground teacher-added items.
-      const reground = groundAnalysis(request.text, reconciled.entities, draft.items);
-      draft.entities = reground.entities;
-      draft.items = enrichActionItems(reground.items, {
-        text: request.text,
-        entities: reground.entities,
-      });
-      draft.warnings.push(...reground.warnings);
-      emotionalImpact = reconciled.emotionalImpact;
-      disagreementCount = reconciled.disagreements.length;
-      winners = reconciled.winners.length ? reconciled.winners : ['algorithm', 'ai'];
-
-      // Curated relearn — weights only, never edits source files.
-      try {
-        const config = loadConfig();
-        const path = defaultPatternStorePath(config.repoRoot);
-        const store = loadPatternStore(path);
-        const updated = learnFromDisagreements(store, reconciled.disagreements);
-        savePatternStore(path, updated);
-      } catch {
+      const hosted = processRawExtraction(
+        request.text,
+        request.now,
+        request.timezone,
+        (providerResult.raw ?? {}) as Record<string, unknown>,
+        segments,
+      );
+      // Prefer hosted when it produced a richer split than the draft.
+      const hostedRicher =
+        hosted.items.length > draft.items.length ||
+        hosted.entities.length > draft.entities.length ||
+        hosted.items.some((item) => item.type === 'FEELING' || item.type === 'REMINDER');
+      if (hostedRicher || hosted.items.length > 0) {
+        draft = hosted;
+        winners = ['primary'];
+        usedAiTeacher = false;
+      } else {
         draft.warnings.push({
-          code: 'PATTERN_STORE_SKIPPED',
-          message: 'could not persist pattern weights',
+          code: 'HOSTED_UNHELPFUL',
+          message: 'hosted model returned no usable items; kept algorithm draft',
         });
+        winners = ['algorithm'];
       }
     }
     gaps = detectGaps(draft.items, { text: request.text, intent: draft.intent });
+    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
+    emotionalImpact = inferEmotionalImpact(request.text, draft.items, draft.entities);
   } else {
     // Hosted full extract when draft is weak but has no structured gaps list,
     // or primary unavailable for teacher.
