@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { analyzeConversation, fetchHealth, LifelogApiError } from './api';
 import { ResultPanel } from './components/ResultPanel';
+import { TaskList } from './components/TaskList';
 import { SAMPLES } from './samples';
 import type { AnalyzeResponse, HealthResponse } from './types';
 
@@ -49,6 +50,7 @@ export function App() {
   const [error, setError] = useState<{ title: string; detail: string; requestId?: string } | null>(null);
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState(false);
+  const [taskRefreshKey, setTaskRefreshKey] = useState(0);
 
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -90,6 +92,7 @@ export function App() {
     try {
       const response = await analyzeConversation(text, controller.signal);
       setResult(response);
+      setTaskRefreshKey((key) => key + 1);
     } catch (caught) {
       if (controller.signal.aborted) return;
 
@@ -184,42 +187,46 @@ export function App() {
           </div>
         </section>
 
-        <section className="panel panel--output" aria-label="Analysis output" aria-busy={loading}>
-          {loading ? (
-            <div className="loading">
-              <div className="skeleton skeleton--head" />
-              <div className="skeleton" />
-              <div className="skeleton skeleton--short" />
-              <p className="muted">
-                Reading the conversation… {(elapsedMs / 1000).toFixed(1)}s
-                {elapsedMs > 3_000
-                  ? ' — free model is slow; Lifelog falls back locally within ~5s.'
-                  : ''}
-              </p>
-            </div>
-          ) : error ? (
-            <div className="errorbox" role="alert">
-              <h3>{error.title}</h3>
-              <p>{error.detail}</p>
-              {error.requestId ? (
+        <div className="column">
+          <section className="panel panel--output" aria-label="Analysis output" aria-busy={loading}>
+            {loading ? (
+              <div className="loading">
+                <div className="skeleton skeleton--head" />
+                <div className="skeleton" />
+                <div className="skeleton skeleton--short" />
                 <p className="muted">
-                  Request id <code>{error.requestId}</code>
+                  Asking the AI model… {(elapsedMs / 1000).toFixed(1)}s
+                  {elapsedMs > 4_000
+                    ? ' — the free model is busy; Lifelog will use its offline engine if it does not answer.'
+                    : ''}
                 </p>
-              ) : null}
-            </div>
-          ) : result ? (
-            <ResultPanel result={result} />
-          ) : (
-            <div className="empty empty--initial">
-              <h3>Nothing analyzed yet</h3>
-              <p>
-                Type a message or pick a sample. Lifelog will break it into people, places, events,
-                tasks, reminders, decisions and feelings — and show you the exact words each one
-                came from.
-              </p>
-            </div>
-          )}
-        </section>
+              </div>
+            ) : error ? (
+              <div className="errorbox" role="alert">
+                <h3>{error.title}</h3>
+                <p>{error.detail}</p>
+                {error.requestId ? (
+                  <p className="muted">
+                    Request id <code>{error.requestId}</code>
+                  </p>
+                ) : null}
+              </div>
+            ) : result ? (
+              <ResultPanel result={result} />
+            ) : (
+              <div className="empty empty--initial">
+                <h3>Nothing analyzed yet</h3>
+                <p>
+                  Type a message or pick a sample. Lifelog will break it into people, places, events,
+                  tasks, reminders, decisions and feelings — and show you the exact words each one
+                  came from.
+                </p>
+              </div>
+            )}
+          </section>
+
+          <TaskList refreshKey={taskRefreshKey} />
+        </div>
       </main>
 
       <footer className="foot">

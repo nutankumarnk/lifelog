@@ -110,14 +110,54 @@ export interface Analysis {
   schema_version: string;
   intent: Intent;
   intent_confidence: number;
+  stance?: string;
+  stance_confidence?: number;
   language: string;
   summary: string;
   segments: Segment[];
   entities: Entity[];
   items: Item[];
+  emotional_impact?: Array<{
+    valence: string;
+    intensity: number;
+    summary: string;
+    inferred: true;
+    confidence: number;
+  }>;
+  gaps?: Array<{ code: string; message: string }>;
+  algorithm_confidence?: number;
+  reconciliation?: {
+    used_ai_teacher: boolean;
+    skipped_ai: boolean;
+    disagreement_count: number;
+    winners: string[];
+  };
   missing_information: MissingInfo[];
   follow_up: FollowUp | null;
   warnings: Warning[];
+}
+
+export type ActionStatus = 'OPEN' | 'IN_PROGRESS' | 'DONE' | 'CANCELLED';
+
+export interface TaskItem {
+  id: string;
+  conversationId: string;
+  type: 'TASK' | 'REMINDER';
+  title: string;
+  summary: string;
+  displayText: string | null;
+  sourceText: string;
+  dueAt: string | null;
+  temporalRaw: string | null;
+  status: ActionStatus;
+  priority: string | null;
+  completedAt: string | null;
+  createdAt: string;
+}
+
+export interface TaskListResponse {
+  items: TaskItem[];
+  counts: { open: number; done: number; total: number };
 }
 
 export interface AnalyzeResponse {

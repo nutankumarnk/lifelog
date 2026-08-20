@@ -6,7 +6,14 @@
  * appears in this directory, the layering has been broken. See
  * docs/architecture.md.
  */
-import type { AnalyzeResponse, ApiError, HealthResponse } from './types';
+import type {
+  ActionStatus,
+  AnalyzeResponse,
+  ApiError,
+  HealthResponse,
+  TaskItem,
+  TaskListResponse,
+} from './types';
 
 /** Vite proxies these paths to the backend. See vite.config.ts. */
 const BASE = '';
@@ -64,4 +71,26 @@ export async function fetchHealth(signal?: AbortSignal): Promise<HealthResponse>
   const response = await fetch(`${BASE}/health`, { signal });
   if (!response.ok && response.status !== 503) await parseError(response);
   return (await response.json()) as HealthResponse;
+}
+
+export async function fetchTasks(signal?: AbortSignal): Promise<TaskListResponse> {
+  const response = await fetch(`${BASE}/api/v1/tasks?limit=50`, { signal });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as TaskListResponse;
+}
+
+export async function updateTaskStatus(
+  id: string,
+  status: ActionStatus,
+  signal?: AbortSignal,
+): Promise<TaskItem> {
+  const response = await fetch(`${BASE}/api/v1/tasks/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+    signal,
+  });
+
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as TaskItem;
 }

@@ -69,7 +69,7 @@ export function detectStance(
   if (intent === 'PLAN' || containsAny(lower, PLAN_MARKERS)) {
     return { stance: 'PLAN', confidence: 0.75 };
   }
-  if (intent === 'CORRECT' || items.some((i) => i.type === 'DECISION') || containsAny(lower, DECISION_MARKERS)) {
+  if (items.some((i) => i.type === 'DECISION') || containsAny(lower, DECISION_MARKERS)) {
     return { stance: 'DECIDE', confidence: 0.8 };
   }
   if (containsAny(lower, REMINDER_MARKERS)) {

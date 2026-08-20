@@ -61,6 +61,45 @@ export const HealthResponseSchema = z.object({
 });
 export type HealthResponse = z.infer<typeof HealthResponseSchema>;
 
+export const ActionStatusEnum = z.enum(['OPEN', 'IN_PROGRESS', 'DONE', 'CANCELLED']);
+
+export const TaskItemSchema = z.object({
+  id: z.string().uuid(),
+  conversationId: z.string().uuid(),
+  type: z.enum(['TASK', 'REMINDER']),
+  title: z.string(),
+  summary: z.string(),
+  displayText: z.string().nullable(),
+  sourceText: z.string(),
+  dueAt: z.string().nullable(),
+  temporalRaw: z.string().nullable(),
+  status: ActionStatusEnum,
+  priority: z.string().nullable(),
+  completedAt: z.string().nullable(),
+  createdAt: z.string(),
+});
+export type TaskItem = z.infer<typeof TaskItemSchema>;
+
+export const TaskListResponseSchema = z.object({
+  items: z.array(TaskItemSchema),
+  counts: z.object({
+    open: z.number().int().min(0),
+    done: z.number().int().min(0),
+    total: z.number().int().min(0),
+  }),
+});
+export type TaskListResponse = z.infer<typeof TaskListResponseSchema>;
+
+export const TaskListQuerySchema = z.object({
+  status: ActionStatusEnum.optional(),
+  limit: z.coerce.number().int().min(1).max(200).optional(),
+});
+
+export const UpdateTaskRequestSchema = z.object({
+  status: ActionStatusEnum,
+});
+export type UpdateTaskRequest = z.infer<typeof UpdateTaskRequestSchema>;
+
 /** The one and only error envelope. See docs/error-handling.md. */
 export const ErrorResponseSchema = z.object({
   error: z.object({

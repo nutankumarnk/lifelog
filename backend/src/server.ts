@@ -15,11 +15,14 @@ import { buildAiRuntime, type AiRuntimeOptions } from './ai/registry.js';
 import { loadConfig, type AppConfig } from './config/env.js';
 import { getDb, type Database } from './db/client.js';
 import { ConversationController } from './controllers/conversation.controller.js';
+import { TaskController } from './controllers/task.controller.js';
 import { registerErrorHandler } from './errors/handler.js';
 import { AnalysisRepository } from './repositories/analysis.repository.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
+import { TaskRepository } from './repositories/task.repository.js';
 import { registerConversationRoutes } from './routes/conversations.route.js';
 import { registerHealthRoutes } from './routes/health.route.js';
+import { registerTaskRoutes } from './routes/tasks.route.js';
 import { ConversationService } from './services/conversation.service.js';
 import { summarizeText } from './utils/redact.js';
 
@@ -75,7 +78,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
 
   await app.register(cors, {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
-    methods: ['GET', 'POST', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
     credentials: false,
   });
 
@@ -109,6 +112,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
     });
 
     await registerConversationRoutes(app, { controller: new ConversationController(service) });
+    await registerTaskRoutes(app, { controller: new TaskController(new TaskRepository(db)) });
   } else {
     // Without a database Lifelog cannot honour its own guarantee that the
     // conversation is preserved, so the endpoint refuses rather than pretending.

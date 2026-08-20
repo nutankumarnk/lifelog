@@ -103,8 +103,8 @@ describe('Reminder and Task modules', () => {
       source_text: 'I felt happy',
     });
     const [out] = enrichActionItems([feeling], { text: 'I felt happy', entities: [] });
-    expect(out.details.display_text).toBeUndefined();
-    expect(out.title).toBe('happy');
+    expect(out?.details.display_text).toBeUndefined();
+    expect(out?.title).toBe('happy');
   });
 });
 

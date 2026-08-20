@@ -53,10 +53,19 @@ export function ResultPanel({ result }: { result: AnalyzeResponse }) {
 
       {meta.degraded ? (
         <p className="notice notice--warn">
-          The primary model was unavailable, so this reading came from the offline rule engine.
-          Extraction quality is lower than usual.
+          <strong>The AI model did not answer.</strong> This reading came from Lifelog's offline
+          engine, so it understands less of what you meant.
+          {analysis.warnings.some((warning) =>
+            String(warning.detail?.reason ?? '').includes('RATE_LIMITED'),
+          )
+            ? ' The free daily model quota is used up — it resets at 00:00 UTC.'
+            : ''}
         </p>
-      ) : null}
+      ) : (
+        <p className="notice notice--ok">
+          Read by the AI model ({meta.model.replace(/:free$/, '')}).
+        </p>
+      )}
 
       {!meta.persisted ? (
         <p className="notice notice--warn">

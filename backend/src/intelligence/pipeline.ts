@@ -1,12 +1,15 @@
 /**
- * The Lifelog intelligence pipeline.
+ * The Lifelog intelligence pipeline — AI-first.
  *
- *   algorithm draft → enrich Reminder/Task → stance / gaps / impact
- *     → (optional) Gemma teacher for gaps → reconcile → calibrate → validate
+ *   segment → ask the AI (always, when a hosted model is configured)
+ *     → normalise → ground → classify → Reminder/Task modules
+ *     → stance / gaps / emotional impact → calibrate → validate
  *
- * When the algorithm draft is high-confidence with no gaps, the hosted model is
- * skipped. Mock/local primaries still run as the extraction source so tests and
- * offline mode keep working. See docs/algorithm.md.
+ * The hosted model is the primary reader of the user's words. The offline rule
+ * engine runs alongside it as a *training* draft and as the safety net when the
+ * model is unavailable; it never pre-empts a successful model reading.
+ *
+ * See docs/algorithm.md.
  */
 import { LocalRuleProvider } from '../ai/local.provider.js';
 import { runProviders, type AiRuntimeOptions, type ProviderAttempt } from '../ai/registry.js';
@@ -62,8 +65,6 @@ export interface UnderstandResult {
   /** The model's unmodified output, for debugging. Not returned by the API. */
   rawModelOutput: unknown;
 }
-
-const SKIP_AI_CONFIDENCE = 0.78;
 
 function detectLanguage(text: string, reported: string | undefined): string {
   const hasNonLatin = NON_LATIN_SCRIPT.test(text);
@@ -185,6 +186,10 @@ function processRawExtraction(
 
 /**
  * Runs a conversation through the full understanding pipeline.
+ *
+ * The configured provider always gets the user's text. Only if it fails does
+ * the offline engine's reading become the answer, and that is reported as
+ * `degraded` so nobody mistakes a rule-engine reading for the model's.
  */
 export async function understandConversation(
   runtime: AiRuntimeOptions,
@@ -193,195 +198,86 @@ export async function understandConversation(
   const startedAt = Date.now();
   const segments = segmentConversation(request.text);
 
-  const fullInstructions = buildInstructions();
-  const fullUserMessage = buildUserMessage(request);
+  const instructions = buildInstructions();
+  const userMessage = buildUserMessage(request);
 
-  // --- Algorithm draft (always, via local rule engine) -------------------
-  const localProvider = new LocalRuleProvider();
-  const draftProviderResult = await runProviders(
-    { primary: localProvider, fallback: null, maxRetries: 0 },
-    {
-      text: request.text,
-      now: request.now,
-      timezone: request.timezone,
-      instructions: fullInstructions,
-      userMessage: fullUserMessage,
-    },
-  );
+  // --- Ask the provider (AI-first) ---------------------------------------
+  const providerResult = await runProviders(runtime, {
+    text: request.text,
+    now: request.now,
+    timezone: request.timezone,
+    instructions,
+    userMessage,
+  });
 
   let draft = processRawExtraction(
     request.text,
     request.now,
     request.timezone,
-    (draftProviderResult.raw ?? {}) as Record<string, unknown>,
+    (providerResult.raw ?? {}) as Record<string, unknown>,
     segments,
   );
 
-  let gaps: AnalysisGap[] = detectGaps(draft.items, { text: request.text, intent: draft.intent });
-  let algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
-  const stanceDraft = detectStance(request.text, draft.intent, draft.items);
+  const degraded = providerResult.degraded;
+  const usedHostedModel = !degraded && runtime.primary.name === 'openrouter';
 
-  /** Gaps that actually need a hosted model — pronouns alone are not enough. */
-  const AI_WORTHY_GAPS = new Set([
-    'MULTI_FACT_SPLIT',
-    'REMINDER_NOT_CAPTURED',
-    'FEELING_NOT_SPLIT',
-    'UNGROUNDED_ITEM',
-    'REMINDER_MISSING_TIME',
-  ]);
-  const needsHostedHelp =
-    gaps.some((gap) => AI_WORTHY_GAPS.has(gap.code)) || algorithmConfidence < 0.55;
+  if (degraded) {
+    const failure = providerResult.attempts.find((attempt) => attempt.status === 'error');
+    draft.warnings.push({
+      code: 'PROVIDER_DEGRADED',
+      message: `the AI model was unavailable; answered by the ${providerResult.provider} engine`,
+      detail: {
+        failedProvider: failure?.provider ?? null,
+        reason: failure?.errorKind ?? null,
+        detail: failure?.errorMessage ?? null,
+      },
+    });
+  }
 
-  const primaryName = runtime.primary.name;
-  const honorScriptedPrimary = primaryName === 'mock' || primaryName === 'local';
-  const canSkipHosted =
-    !honorScriptedPrimary && algorithmConfidence >= SKIP_AI_CONFIDENCE && !needsHostedHelp;
+  // --- Training draft (offline engine, never overrides a model answer) ----
+  // Runs only when the model answered, so we can measure the algorithm against
+  // it later. It costs a few milliseconds and never changes the response.
+  let algorithmConfidence = 0.5;
+  if (usedHostedModel) {
+    try {
+      const local = new LocalRuleProvider();
+      const localResult = await local.analyze({
+        text: request.text,
+        now: request.now,
+        timezone: request.timezone,
+        instructions,
+        userMessage,
+      });
+      const localDraft = processRawExtraction(
+        request.text,
+        request.now,
+        request.timezone,
+        (localResult.raw ?? {}) as Record<string, unknown>,
+        segments,
+      );
+      const localGaps = detectGaps(localDraft.items, {
+        text: request.text,
+        intent: localDraft.intent,
+      });
+      algorithmConfidence = scoreAlgorithmConfidence(localDraft.items, localGaps);
+    } catch {
+      algorithmConfidence = 0.4;
+    }
+  }
 
-  let providerName = draftProviderResult.provider;
-  let providerModel = draftProviderResult.model;
-  let degraded = false;
-  let attempts: ProviderAttempt[] = [...draftProviderResult.attempts];
-  let rawModelOutput: unknown = draftProviderResult.raw;
-  let usedAiTeacher = false;
-  let skippedAi = false;
-  let disagreementCount = 0;
-  let winners: string[] = ['algorithm'];
-  let emotionalImpact: EmotionalImpact[] = inferEmotionalImpact(
+  const gaps: AnalysisGap[] = detectGaps(draft.items, {
+    text: request.text,
+    intent: draft.intent,
+  });
+  if (!usedHostedModel) {
+    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
+  }
+
+  const emotionalImpact: EmotionalImpact[] = inferEmotionalImpact(
     request.text,
     draft.items,
     draft.entities,
   );
-
-  if (canSkipHosted) {
-    skippedAi = true;
-    winners = ['algorithm'];
-  } else if (honorScriptedPrimary) {
-    // Tests and forced-local: primary extraction is authoritative.
-    const providerResult = await runProviders(runtime, {
-      text: request.text,
-      now: request.now,
-      timezone: request.timezone,
-      instructions: fullInstructions,
-      userMessage: fullUserMessage,
-    });
-    attempts = [...attempts, ...providerResult.attempts];
-    rawModelOutput = providerResult.raw;
-    providerName = providerResult.provider;
-    providerModel = providerResult.model;
-    degraded = providerResult.degraded;
-    draft = processRawExtraction(
-      request.text,
-      request.now,
-      request.timezone,
-      (providerResult.raw ?? {}) as Record<string, unknown>,
-      segments,
-    );
-    if (providerResult.degraded) {
-      draft.warnings.push({
-        code: 'PROVIDER_DEGRADED',
-        message: `answered by the ${providerResult.provider} fallback provider`,
-        detail: {
-          failedProvider: providerResult.attempts.find((a) => a.status === 'error')?.provider ?? null,
-          reason: providerResult.attempts.find((a) => a.status === 'error')?.errorKind ?? null,
-        },
-      });
-    }
-    gaps = detectGaps(draft.items, { text: request.text, intent: draft.intent });
-    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
-    emotionalImpact = inferEmotionalImpact(request.text, draft.items, draft.entities);
-    winners = [providerResult.degraded ? 'algorithm-fallback' : 'primary'];
-  } else if (needsHostedHelp && runtime.primary.isAvailable()) {
-    // Complex / multi-fact messages need a full hosted reading. The teacher
-    // patch path is too brittle on free-tier hosts (timeouts return the local
-    // fallback, which we already have as the draft). Prefer full extract.
-    const providerResult = await runProviders(runtime, {
-      text: request.text,
-      now: request.now,
-      timezone: request.timezone,
-      instructions: fullInstructions,
-      userMessage: fullUserMessage,
-    });
-    attempts = [...attempts, ...providerResult.attempts];
-    rawModelOutput = providerResult.raw;
-    providerName = providerResult.provider;
-    providerModel = providerResult.model;
-    degraded = providerResult.degraded;
-
-    if (providerResult.degraded) {
-      draft.warnings.push({
-        code: 'PROVIDER_DEGRADED',
-        message: `hosted model unavailable for a complex message; kept algorithm draft`,
-        detail: {
-          failedProvider: providerResult.attempts.find((a) => a.status === 'error')?.provider ?? null,
-          reason: providerResult.attempts.find((a) => a.status === 'error')?.errorKind ?? null,
-          gaps: gaps.map((gap) => gap.code),
-        },
-      });
-      winners = ['algorithm'];
-    } else {
-      const hosted = processRawExtraction(
-        request.text,
-        request.now,
-        request.timezone,
-        (providerResult.raw ?? {}) as Record<string, unknown>,
-        segments,
-      );
-      // Prefer hosted when it produced a richer split than the draft.
-      const hostedRicher =
-        hosted.items.length > draft.items.length ||
-        hosted.entities.length > draft.entities.length ||
-        hosted.items.some((item) => item.type === 'FEELING' || item.type === 'REMINDER');
-      if (hostedRicher || hosted.items.length > 0) {
-        draft = hosted;
-        winners = ['primary'];
-        usedAiTeacher = false;
-      } else {
-        draft.warnings.push({
-          code: 'HOSTED_UNHELPFUL',
-          message: 'hosted model returned no usable items; kept algorithm draft',
-        });
-        winners = ['algorithm'];
-      }
-    }
-    gaps = detectGaps(draft.items, { text: request.text, intent: draft.intent });
-    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
-    emotionalImpact = inferEmotionalImpact(request.text, draft.items, draft.entities);
-  } else {
-    // Hosted full extract when draft is weak but has no structured gaps list,
-    // or primary unavailable for teacher.
-    const providerResult = await runProviders(runtime, {
-      text: request.text,
-      now: request.now,
-      timezone: request.timezone,
-      instructions: fullInstructions,
-      userMessage: fullUserMessage,
-    });
-    attempts = [...attempts, ...providerResult.attempts];
-    rawModelOutput = providerResult.raw;
-    providerName = providerResult.provider;
-    providerModel = providerResult.model;
-    degraded = providerResult.degraded;
-    if (providerResult.degraded) {
-      draft.warnings.push({
-        code: 'PROVIDER_DEGRADED',
-        message: `answered by the ${providerResult.provider} fallback provider`,
-      });
-      // Keep algorithm draft when hosted fails.
-      winners = ['algorithm'];
-    } else {
-      draft = processRawExtraction(
-        request.text,
-        request.now,
-        request.timezone,
-        (providerResult.raw ?? {}) as Record<string, unknown>,
-        segments,
-      );
-      winners = ['primary'];
-    }
-    gaps = detectGaps(draft.items, { text: request.text, intent: draft.intent });
-    algorithmConfidence = scoreAlgorithmConfidence(draft.items, gaps);
-    emotionalImpact = inferEmotionalImpact(request.text, draft.items, draft.entities);
-  }
 
   const stance = detectStance(request.text, draft.intent, draft.items);
 
@@ -406,10 +302,10 @@ export async function understandConversation(
     gaps,
     algorithm_confidence: algorithmConfidence,
     reconciliation: {
-      used_ai_teacher: usedAiTeacher && !degraded,
-      skipped_ai: skippedAi,
-      disagreement_count: disagreementCount,
-      winners,
+      used_ai_teacher: usedHostedModel,
+      skipped_ai: false,
+      disagreement_count: 0,
+      winners: [degraded ? 'offline-engine' : providerResult.provider],
     },
     missing_information: missing,
     follow_up: followUp,
@@ -432,11 +328,11 @@ export async function understandConversation(
 
   return {
     analysis,
-    provider: providerName,
-    model: providerModel,
+    provider: providerResult.provider,
+    model: providerResult.model,
     degraded,
     latencyMs: Date.now() - startedAt,
-    attempts,
-    rawModelOutput,
+    attempts: providerResult.attempts,
+    rawModelOutput: providerResult.raw,
   };
 }
