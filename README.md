@@ -58,7 +58,7 @@ To use a hosted model, put your key in `secrets/API-KEYS.md` — see
 ```bash
 npm run dev:backend         # Fastify API on http://localhost:4319
 npm run dev:frontend        # Vite test console on http://localhost:5319
-npm test                    # 153 tests
+npm test                    # 158 tests
 npm run keys:check          # scan the repository for exposed credentials
 ```
 
@@ -124,7 +124,7 @@ lifelog/
 │   │   ├── controllers/  HTTP shaping
 │   │   ├── routes/       Path declarations
 │   │   └── db/           Drizzle schema, client, migrations
-│   └── tests/            153 tests: unit, behaviour, integration
+│   └── tests/            158 tests: unit, behaviour, integration
 ├── frontend/             Temporary React test console
 ├── docs/                 The documentation system (read this)
 ├── agents/               Instructions for AI coding agents

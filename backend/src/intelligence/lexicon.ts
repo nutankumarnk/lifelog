@@ -455,14 +455,45 @@ export const HINGLISH_MARKERS = [
   'ko',
 ];
 
+const WORD_CHARACTER = /[\p{L}\p{N}]/u;
+
+/**
+ * Case-insensitive phrase match that respects word boundaries.
+ *
+ * Plain substring matching is wrong here: the marker "do i" is contained in
+ * "do it", which turned "might do it again" into an ASK. A boundary is only
+ * required where the needle itself ends in a word character, so markers written
+ * with a deliberate trailing space ("must ", "should ") keep working.
+ */
+function containsPhrase(lower: string, needle: string): boolean {
+  if (!needle) return false;
+
+  const needsLeftBoundary = WORD_CHARACTER.test(needle[0]!);
+  const needsRightBoundary = WORD_CHARACTER.test(needle[needle.length - 1]!);
+
+  let from = 0;
+  for (;;) {
+    const at = lower.indexOf(needle, from);
+    if (at === -1) return false;
+
+    const before = at > 0 ? lower[at - 1]! : '';
+    const after = lower[at + needle.length] ?? '';
+    const leftOk = !needsLeftBoundary || before === '' || !WORD_CHARACTER.test(before);
+    const rightOk = !needsRightBoundary || after === '' || !WORD_CHARACTER.test(after);
+
+    if (leftOk && rightOk) return true;
+    from = at + 1;
+  }
+}
+
 /** Case-insensitive containment test over a phrase list. */
 export function containsAny(haystack: string, needles: readonly string[]): boolean {
   const lower = haystack.toLowerCase();
-  return needles.some((needle) => lower.includes(needle));
+  return needles.some((needle) => containsPhrase(lower, needle));
 }
 
 /** Returns every phrase from `needles` present in `haystack`. */
 export function matchesIn(haystack: string, needles: readonly string[]): string[] {
   const lower = haystack.toLowerCase();
-  return needles.filter((needle) => lower.includes(needle));
+  return needles.filter((needle) => containsPhrase(lower, needle));
 }

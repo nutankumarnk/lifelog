@@ -31,7 +31,7 @@ stores people's lives — that is not an acceptable foundation.
 **Chosen:** 3.
 
 **Why.** Three properties that options 1 and 2 cannot provide. The behaviour is
-testable — 153 tests run with no network. The behaviour is stable across model
+testable — 158 tests run with no network. The behaviour is stable across model
 upgrades and outages. And the product's rules are inspectable: "why did Lifelog
 call this a task?" has an answer in a file, not a shrug.
 

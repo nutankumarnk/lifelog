@@ -8,6 +8,22 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-08-20 — 1.0.1
+
+### Fixed
+
+**Lexicon phrase matching now respects word boundaries.** Marker lists were
+matched as plain substrings, so `"do i"` matched inside `"do it"` — which read
+"might do it again tomorrow" as a question and set intent to `ASK` instead of
+`PLAN`. Markers written with a deliberate trailing space (`"must "`, `"should "`)
+are unaffected, because a boundary is only required where the marker itself ends
+in a word character.
+
+*Why:* intent gates the follow-up rule, so a misread intent changes whether
+Lifelog speaks. Five regression tests added; test count 153 → 158.
+
+---
+
 ## 2026-08-19 — 1.0.0 — Phase 1: Conversation Understanding
 
 The first working version of Lifelog. Everything below is new.
@@ -106,7 +122,7 @@ least protected place in a system.
 
 ### Added — verification and tooling
 
-- **153 tests** covering the 20 required scenarios, failure paths, the API
+- **158 tests** covering the 20 required scenarios, failure paths, the API
   contract and the security controls. No test calls a real model.
 - **A React + Vite test console** on port 5319 — API-only, no key, no model
   logic, no database access. Explicitly disposable.

@@ -16,7 +16,7 @@ Read a message, understand it as structured life information, store both.
 
 Delivered: the analysis contract, the model-independent intelligence layer, the
 AI provider abstraction with an offline fallback, PostgreSQL persistence, the
-HTTP API, 153 tests covering the 20 required scenarios, a React test console, the
+HTTP API, 158 tests covering the 20 required scenarios, a React test console, the
 secrets subsystem, and this documentation system.
 
 Explicitly not delivered: recall, cross-conversation identity, notifications,

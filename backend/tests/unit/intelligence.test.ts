@@ -15,6 +15,7 @@ import { calibrate, LOW_CONFIDENCE_THRESHOLD, MAX_CONFIDENCE } from '../../src/i
 import { parseModelJson } from '../../src/ai/json.js';
 import { EMPTY_TEMPORAL, type Item } from '../../src/schemas/analysis.schema.js';
 import { buildInstructions } from '../../src/intelligence/prompt.js';
+import { QUESTION_MARKERS, TASK_MARKERS, containsAny, matchesIn } from '../../src/intelligence/lexicon.js';
 
 /** Wednesday 2025-06-11 10:00 UTC. */
 const NOW = new Date('2025-06-11T10:00:00.000Z');
@@ -35,6 +36,35 @@ function makeItem(overrides: Partial<Item> = {}): Item {
     ...overrides,
   };
 }
+
+describe('lexicon matching', () => {
+  it('does not match a marker inside a longer word', () => {
+    // "do i" lives inside "do it", which used to turn "might do it again"
+    // into a question and misread the whole message as ASK.
+    expect(containsAny('might do it again tomorrow', QUESTION_MARKERS)).toBe(false);
+    expect(containsAny('did i call the dentist', QUESTION_MARKERS)).toBe(true);
+  });
+
+  it('still matches markers written with a trailing space', () => {
+    expect(containsAny('I must finish the report', TASK_MARKERS)).toBe(true);
+    expect(containsAny('I should call them', TASK_MARKERS)).toBe(true);
+  });
+
+  it('matches at the start and end of a string', () => {
+    expect(containsAny('need to sleep', TASK_MARKERS)).toBe(true);
+    expect(containsAny('what did', QUESTION_MARKERS)).toBe(true);
+  });
+
+  it('is not fooled by punctuation adjacency', () => {
+    expect(containsAny('remind me, please', ['remind me'])).toBe(true);
+    expect(containsAny('reminders are annoying', ['remind me'])).toBe(false);
+  });
+
+  it('reports every distinct marker present', () => {
+    expect(matchesIn('I need to and I have to', TASK_MARKERS)).toContain('i need to');
+    expect(matchesIn('I need to and I have to', TASK_MARKERS)).toContain('i have to');
+  });
+});
 
 describe('temporal resolution', () => {
   const cases: Array<[string, string | null]> = [

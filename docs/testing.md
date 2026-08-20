@@ -1,6 +1,6 @@
 # Testing
 
-153 tests. What they cover, why they are written the way they are, and what to
+158 tests. What they cover, why they are written the way they are, and what to
 add when you change something.
 
 ```bash
@@ -193,7 +193,7 @@ infrastructure to be verified.
 ## Before committing
 
 ```bash
-npm test              # all 153
+npm test              # all 158
 npm run typecheck --workspace backend
 npm run keys:check    # the pre-commit hook runs this too
 ```

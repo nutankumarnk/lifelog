@@ -73,7 +73,7 @@ the next agent reads, and the only thing that tells them where to start.
 - [x] Pre-commit hook installer
 - [x] `docs/security-checklist.md`
 
-### Tests — 153 passing
+### Tests — 158 passing
 
 - [x] Unit: intelligence modules
 - [x] Unit: security utilities and the scanner itself
@@ -117,7 +117,7 @@ the next agent reads, and the only thing that tells them where to start.
 | Unknown entities are preserved | ✅ | `kind: OTHER` + `raw_kind`; scenario 7 |
 | Follow-up logic works | ✅ | Scenarios 9 and 10 |
 | Task/reminder distinction works | ✅ | Scenarios 4 and 5, plus demotion/promotion unit tests |
-| Automated tests pass | ✅ | 153 |
+| Automated tests pass | ✅ | 158 |
 | Test frontend works | ✅ | Verified end to end in a browser |
 | Frontend communicates through the API | ✅ | No key, no model, no database in `frontend/` |
 | No secrets exposed | ✅ | `npm run keys:check` clean; keys file gitignored |

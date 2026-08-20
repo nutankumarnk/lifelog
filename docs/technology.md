@@ -248,7 +248,7 @@ value, so the console is hand-written CSS in one file.
 fast, and its API is familiar to anyone who has used Jest. Shares Vite's
 config model, so there is one build story in the repository.
 
-**Status:** Stable. 153 tests.
+**Status:** Stable. 158 tests.
 
 **Note:** Database-backed tests are serialised because they truncate shared
 tables. Unit and behaviour tests run in parallel.

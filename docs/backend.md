@@ -222,7 +222,7 @@ network. See [`security-checklist.md`](security-checklist.md).
 npm run db:up          # PostgreSQL on 5434
 npm run db:migrate     # apply migrations
 npm run dev:backend    # tsx watch, port 4319
-npm test               # 153 tests
+npm test               # 158 tests
 npm run typecheck      # tsc --noEmit
 ```
 

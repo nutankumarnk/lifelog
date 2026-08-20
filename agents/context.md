@@ -47,7 +47,7 @@ and Phase 5.
 | ORM | Drizzle 0.45, migrations in `backend/drizzle/` |
 | Default AI provider | `auto` — OpenRouter when a key exists, otherwise the local rule engine |
 | Default model | `google/gemma-3-27b-it` |
-| Tests | 153, `npm test`, Vitest |
+| Tests | 158, `npm test`, Vitest |
 | Auth | **None.** Single implicit local user. |
 
 ## Known limitations
