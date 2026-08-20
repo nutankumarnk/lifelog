@@ -183,7 +183,8 @@ model straightforward later.
 **Options considered.** OpenAI or Anthropic SDK directly; OpenRouter as an
 aggregator; self-hosted from the start.
 
-**Chosen:** OpenRouter, `google/gemma-3-27b-it`, over plain `fetch`.
+**Chosen:** OpenRouter, `google/gemma-4-26b-a4b-it:free` (originally Gemma 3 27B;
+switched 2026-08-20 without adapter changes), over plain `fetch`.
 
 **Why.** OpenRouter puts dozens of models behind one OpenAI-compatible endpoint,
 so changing model is a config value rather than a new adapter — which directly

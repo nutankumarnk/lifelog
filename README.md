@@ -100,7 +100,7 @@ Copy `.env.example` to `.env`. **Secrets do not belong in `.env`** — they go i
 | `DATABASE_URL` | — | PostgreSQL connection string (required) |
 | `TEST_DATABASE_URL` | — | Separate database for the test suite |
 | `AI_PROVIDER` | `auto` | `auto`, `openrouter`, `local` or `mock` |
-| `AI_MODEL` | `google/gemma-3-27b-it` | Model identifier passed to OpenRouter |
+| `AI_MODEL` | `google/gemma-4-26b-a4b-it:free` | Model identifier passed to OpenRouter |
 | `CORS_ORIGINS` | `http://localhost:5319` | Browser origins allowed to call the API |
 | `MAX_INPUT_CHARS` | `20000` | Longest message accepted |
 | `LOG_LEVEL` | `info` | Log verbosity |

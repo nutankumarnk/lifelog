@@ -10,6 +10,17 @@ Format: date, version, what changed, why.
 
 ## 2026-08-20 — 1.0.1
 
+### Changed
+
+**Default hosted model switched to `google/gemma-4-26b-a4b-it:free`.** Configured
+via `AI_MODEL` in `.env` / `.env.example` and the Zod default in `env.ts`. The
+OpenRouter adapter is unchanged — model replacement remains a config value.
+
+*Why:* the project owner selected this free Gemma 4 endpoint for better natural-
+language understanding than the offline rule engine while keeping cost at zero
+on OpenRouter's free tier. Live smoke test confirmed `meta.provider: openrouter`
+and structured extraction (entities, past event, task, feeling).
+
 ### Fixed
 
 **Lexicon phrase matching now respects word boundaries.** Marker lists were

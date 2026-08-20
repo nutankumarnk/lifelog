@@ -46,7 +46,7 @@ and Phase 5.
 | Database | PostgreSQL 16, Docker service on port **5434**, databases `lifelog` and `lifelog_test` |
 | ORM | Drizzle 0.45, migrations in `backend/drizzle/` |
 | Default AI provider | `auto` — OpenRouter when a key exists, otherwise the local rule engine |
-| Default model | `google/gemma-3-27b-it` |
+| Default model | `google/gemma-4-26b-a4b-it:free` |
 | Tests | 158, `npm test`, Vitest |
 | Auth | **None.** Single implicit local user. |
 

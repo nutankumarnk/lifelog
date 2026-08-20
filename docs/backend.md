@@ -79,7 +79,7 @@ Notable settings — full list in `.env.example`:
 | `DATABASE_URL` | — | Required for the analyze endpoint to be enabled |
 | `TEST_DATABASE_URL` | — | Used when `NODE_ENV=test` |
 | `AI_PROVIDER` | `auto` | `auto` / `openrouter` / `local` / `mock` |
-| `AI_MODEL` | `google/gemma-3-27b-it` | |
+| `AI_MODEL` | `google/gemma-4-26b-a4b-it:free` | |
 | `AI_TIMEOUT_MS` | 45000 | |
 | `AI_MAX_RETRIES` | 2 | |
 | `MAX_INPUT_CHARS` | 20000 | |

@@ -141,7 +141,7 @@ each one means.
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Provider abstraction | IMPLEMENTED | Three implementations behind one interface |
-| OpenRouter provider | IMPLEMENTED | Default model `google/gemma-3-27b-it` |
+| OpenRouter provider | IMPLEMENTED | Default model `google/gemma-4-26b-a4b-it:free` |
 | Offline rule engine | IMPLEMENTED | Lifelog works with no key and no network |
 | Mock provider | IMPLEMENTED | Test-only; scriptable failures |
 | Retry with backoff | IMPLEMENTED | Retryable errors only, 250ms → 500ms → 1s |

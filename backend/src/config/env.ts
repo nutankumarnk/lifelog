@@ -53,7 +53,7 @@ const EnvSchema = z.object({
   ALLOW_DEGRADED_PERSISTENCE: booleanish,
 
   AI_PROVIDER: z.enum(['auto', 'openrouter', 'local', 'mock']).default('auto'),
-  AI_MODEL: z.string().default('google/gemma-3-27b-it'),
+  AI_MODEL: z.string().default('google/gemma-4-26b-a4b-it:free'),
   AI_TIMEOUT_MS: z.coerce.number().int().min(1000).max(300_000).default(45_000),
   AI_MAX_RETRIES: z.coerce.number().int().min(0).max(5).default(2),
   AI_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),

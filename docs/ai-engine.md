@@ -14,7 +14,7 @@ swappable.** Everything in this document is about keeping that true.
 | --- | --- |
 | Default provider | `auto` — OpenRouter when a key exists, otherwise the local rule engine |
 | Hosted provider | OpenRouter, OpenAI-compatible `/chat/completions` |
-| Default model | `google/gemma-3-27b-it` |
+| Default model | `google/gemma-4-26b-a4b-it:free` |
 | Temperature | 0.1 |
 | Timeout | 45s |
 | Retries | 2, on retryable errors only |

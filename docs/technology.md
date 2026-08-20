@@ -159,17 +159,18 @@ the dependency count at zero and the adapter honest.
 endpoint — including a self-hosted one — works by changing
 `OPENROUTER_BASE_URL`.
 
-### Gemma 3 27B (`google/gemma-3-27b-it`)
+### Gemma 4 26B A4B (`google/gemma-4-26b-a4b-it:free`)
 
 **Purpose:** The default reasoning model.
 
 **Why:** Follows a JSON schema reliably, handles code-switched Indian-English
-input, and is cheap enough to run on every message someone writes about their
-day. Open weights, so it can be self-hosted if hosting economics change. It is
-not the strongest model available and does not need to be — Lifelog verifies
-everything it says.
+input, and the free OpenRouter tier is cheap enough to run on every message
+someone writes about their day. Open weights, so it can be self-hosted if
+hosting economics change. It is not the strongest model available and does not
+need to be — Lifelog verifies everything it says.
 
-**Status:** Current default. Expected to change; that is the design.
+**Status:** Current default (switched from Gemma 3 27B on 2026-08-20). Expected
+to change again; that is the design.
 
 **Replacement:** Set `AI_MODEL`. Nothing else. Then run the behaviour suite,
 which tests Lifelog's guarantees rather than any model's wording.
