@@ -12,22 +12,33 @@ swappable.** Everything in this document is about keeping that true.
 
 | | |
 | --- | --- |
-| Default provider | `auto` — OpenRouter when a key exists, otherwise the local rule engine |
-| Hosted provider | OpenRouter, OpenAI-compatible `/chat/completions` |
-| Default model | `google/gemma-4-26b-a4b-it:free` |
+| Active local provider | `gemini` — direct Google `generateContent` REST API |
+| Hosted providers | Gemini and OpenRouter |
+| Active model | `gemini-flash-latest` |
 | Temperature | 0.1 |
-| Timeout | 20s (then offline fallback; empty hosted bodies are retried once first) |
+| Timeout | 20s |
 | Retries | 0 by default — timeouts/rate-limits are not retried |
-| Fallback | `local` — Lifelog's own offline rule engine (warmed in parallel) |
+| Gemini fallback | None; Gemini errors are surfaced |
 | SDK | None. Plain `fetch`. |
-| Hosted output | Reasoning disabled; 2048 completion tokens; string or part-array `content` |
+| Gemini output | JSON response MIME type; 2048 output tokens |
 
-Configured by `AI_PROVIDER`, `AI_MODEL`, `AI_TIMEOUT_MS`, `AI_MAX_RETRIES`,
-`AI_TEMPERATURE`. The key belongs in `secrets/API-KEYS.md`, never in `.env`.
+Configured by `AI_PROVIDER`, `GEMINI_MODEL`, `AI_MODEL`, `AI_TIMEOUT_MS`,
+`AI_MAX_RETRIES`, and `AI_TEMPERATURE`. Keys belong in
+`secrets/API-KEYS.md`, never in `.env`.
 
 ---
 
-## Why Gemma, and why OpenRouter
+## Why direct Gemini now, while retaining OpenRouter
+
+**Gemini** is the active local provider because the owner supplied direct API
+access. The adapter uses Google's `generateContent` REST endpoint with a system
+instruction, user content, JSON response mode, and provider-reported token
+usage. It uses native `fetch`, so no vendor SDK or new dependency was added.
+
+Explicit Gemini mode intentionally has no offline fallback and does not run the
+local comparison draft. Authentication, quota, timeout and model failures are
+therefore visible. The offline engine remains available explicitly with
+`AI_PROVIDER=local`.
 
 **OpenRouter** because it puts dozens of models behind one OpenAI-compatible
 endpoint. Changing model is a config value rather than a new adapter, which
@@ -50,8 +61,11 @@ Neither choice is load-bearing. Both have decision entries in
 ## What the model is asked to do
 
 One call per conversation. It receives system instructions
-(`intelligence/prompt.ts`) and a user message containing the reference time and
-the user's text, and returns a single JSON object.
+(`intelligence/prompt.ts`) and a user message. **Both open with the current
+date and time in the user's timezone**, because a model has no clock of its
+own — without that, "yesterday" and "next Monday" are unanchored. The calendar
+conversion is still done in `intelligence/temporal.ts`; the model is only told
+what "now" is so it can judge tense.
 
 It is asked for the things a model genuinely does better than code:
 
@@ -100,7 +114,11 @@ in the request already built by the intelligence layer; a provider relays them
 verbatim and must never edit, extend or reinterpret them, or Lifelog's rules
 would start to differ per model.
 
-### The three implementations
+### The four implementations
+
+**`gemini`** — direct hosted Gemini. Sends the API key only in the
+`X-goog-api-key` HTTPS header, requests JSON output, reads candidate text and
+usage metadata, and maps Gemini HTTP failures onto the shared error taxonomy.
 
 **`openrouter`** — hosted models. Maps HTTP failures onto `AiProviderError` kinds
 (`TIMEOUT`, `AUTH`, `RATE_LIMITED`, `UNAVAILABLE`, `NETWORK`, `BAD_OUTPUT`,
@@ -125,7 +143,8 @@ calls a real model.
 
 | `AI_PROVIDER` | Primary | Fallback |
 | --- | --- | --- |
-| `auto` (default) | OpenRouter if a key exists, else local | local, when OpenRouter is primary |
+| `auto` (default) | OpenRouter, then Gemini, then local based on available keys | local only when OpenRouter is primary |
+| `gemini` | Direct Gemini | none; local comparison draft also disabled |
 | `openrouter` | OpenRouter | local |
 | `local` | local | none |
 | `mock` | local | none (tests inject the mock directly) |
@@ -140,9 +159,9 @@ carries `meta.degraded` and a `PROVIDER_DEGRADED` warning naming the failed
 provider and the reason, and confidence is penalised. Degradation is always
 recorded, never hidden.
 
-Every attempt — provider, model, status, attempt number, latency, error class —
-is recorded in `ai_invocations`. Never the prompt, never the key, never the
-response.
+Every attempt — provider, model, status, attempt number, latency, token counts,
+error class — is recorded in `ai_invocations`. Never the prompt, never the key,
+never the response.
 
 ---
 
@@ -157,7 +176,8 @@ Models return almost-JSON. `ai/json.ts` recovers from:
   a stack and closes them in reverse order, so a partially complete analysis is
   still usable. A trailing fragment such as `"ti` is dropped rather than guessed at.
 
-If nothing parses, the provider raises `BAD_OUTPUT` and the registry falls back.
+If nothing parses, the provider raises `BAD_OUTPUT`. OpenRouter can fall back;
+explicit Gemini mode surfaces the error because its fallback is disabled.
 After parsing, `RawModelAnalysisSchema` accepts the loose shape and normalisation
 repairs it. The strict `AnalysisSchema` is applied only at the very end. If that
 fails on a hosted reply, Lifelog falls back to the offline engine rather than
@@ -173,13 +193,17 @@ thought, no caching. A conversation is one prompt and one response, so cost is
 roughly linear in message length and predictable.
 
 Typical hosted latency on a short message is a few hundred milliseconds to a
-couple of seconds when the free endpoint is healthy. Free-tier queues can stall
-far longer; the 20s timeout exists so the UI never hangs — Lifelog then answers
-with the offline engine (`meta.degraded: true`). Gemma 4 thinking is disabled so
-the token budget is spent on the JSON answer, not on hidden reasoning. The local
-provider answers in single-digit milliseconds, and it is warmed in parallel with
-the hosted call so degradation does not add a second wait. The whole test suite
-runs against local.
+couple of seconds. The 20s timeout prevents the UI from hanging. In explicit
+Gemini mode a timeout is returned as an error; OpenRouter mode retains its local
+fallback. The whole test suite remains offline and deterministic.
+
+Each analyze response includes `meta.usage`: prompt, completion and total tokens.
+When Gemini or OpenRouter reports `usage`, those numbers are stored as
+`source: "provider"`.
+The offline engine (and a host that omits `usage`) approximates at ~4 characters
+per token and marks `source: "estimated"` — useful for comparing request size,
+not for billing. Counts are logged without conversation text and written to
+`ai_invocations`.
 
 The largest available cost lever is not the model — it is not calling one.
 Lifelog's rule engine already handles a meaningful share of simple messages
@@ -210,7 +234,8 @@ reason a mid-tier model is sufficient.
 
 ## Replacing the model
 
-**Changing model on the same provider** — set `AI_MODEL`. Nothing else. Then run
+**Changing model on the same provider** — set `GEMINI_MODEL` for Gemini or
+`AI_MODEL` for OpenRouter. Nothing else. Then run
 the behaviour suite, because it asserts Lifelog's guarantees rather than any
 model's wording, and it will tell you whether the new model holds up.
 

@@ -2,13 +2,17 @@
  * AI teacher prompts — gap-filling only, not a blank-slate re-extract.
  */
 import type { AnalysisGap, Item, Stance } from '../schemas/analysis.schema.js';
+import { formatCurrentClock } from './prompt.js';
 
-export function buildTeacherInstructions(): string {
-  return `You assist Lifelog's algorithm. You do NOT replace it.
+export function buildTeacherInstructions(now: Date, timezone: string | null = null): string {
+  return `CURRENT DATE AND TIME: ${formatCurrentClock(now, timezone)}
+This is NOW. You have no clock of your own.
+
+You assist Lifelog's algorithm. You do NOT replace it.
 Return ONE LINE of minified JSON only — no markdown, no prose, no thinking.
 
 You receive: (1) the user's text (2) the algorithm DRAFT (3) GAPS to fill.
-Only answer the gaps. Do not invent names/places/feelings. Do not compute dates.
+Only answer the gaps. Do not invent names/places/feelings. Do not compute ISO dates — copy time phrases only.
 Every new item needs source_text copied exactly from the user text.
 Expressed emotion only if the user wrote an emotion word.
 Inferred emotional_impact must set inferred:true and basis_spans from the text.
@@ -33,11 +37,10 @@ export function buildTeacherUserMessage(input: {
   timezone: string | null;
   draft: TeacherDraft;
 }): string {
-  const isoDate = input.now.toISOString().slice(0, 10);
-  const isoTime = input.now.toISOString().slice(11, 16);
   const gapLines = input.draft.gaps.map((gap, i) => `${i + 1}. [${gap.code}] ${gap.message}`).join('\n');
 
-  return `Reference time: ${isoDate} ${isoTime} UTC${input.timezone ? ` (${input.timezone})` : ''}
+  return `CURRENT DATE AND TIME: ${formatCurrentClock(input.now, input.timezone)}
+This is NOW.
 
 USER TEXT:
 """

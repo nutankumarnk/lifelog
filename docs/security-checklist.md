@@ -52,8 +52,8 @@ the actual vulnerability.
 | --- | --- | --- |
 | `.gitignore` excludes `secrets/*` with two explicit exceptions | [`.gitignore`](../.gitignore) | Committing the keys file |
 | Pre-commit hook runs the scanner on staged files | `npm run hooks:install` | Committing any key-shaped string |
-| Secret scanner with 10 credential rules | [`scripts/check-secrets.mjs`](../scripts/check-secrets.mjs) | Keys pasted into source, docs or config |
-| Name allowlist — only 6 variables are readable from the file | [`keys-file.ts`](../backend/src/config/keys-file.ts) | A keys file setting `PATH` or any other variable |
+| Secret scanner with 11 credential rules | [`scripts/check-secrets.mjs`](../scripts/check-secrets.mjs) | Keys pasted into source, docs or config |
+| Name allowlist — only 7 variables are readable from the file | [`keys-file.ts`](../backend/src/config/keys-file.ts) | A keys file setting `PATH` or any other variable |
 | Real environment always wins over the file | `keys-file.ts` | A stale working copy shadowing a deployment secret |
 | Placeholder detection | `keys-file.ts` | `<paste-your-key>` being sent to a provider as a real key |
 | POSIX permission check, warns unless mode 600 | `keys-file.ts` | Other users on the machine reading the file |
@@ -170,25 +170,30 @@ advisory in identifier escaping.
 ## 4. AI provider data flow
 
 When a hosted model is configured, the user's conversation text is sent to
-OpenRouter, which routes it to a model host. **This is the single largest
+Google Gemini directly or to OpenRouter, which routes it to a model host.
+**This is the single largest
 privacy consideration in the system**, and it must be stated plainly to users
 before Lifelog is used with real data.
 
-- The API key is sent only in an `Authorization` header, over HTTPS, only to the
-  configured base URL.
-- Only the conversation text and the reference time are sent. No database
-  contents, no other conversations, no identifiers.
+- The API key is sent only over HTTPS to the configured provider base URL:
+  `X-goog-api-key` for Gemini or `Authorization` for OpenRouter.
+- Only the conversation text, the current date/time, and the timezone are sent.
+  No database contents, no other conversations, no identifiers.
 - Model responses are treated as untrusted input: parsed defensively, validated
   against a schema, and grounded against the original text before anything is
   stored. See [`algorithm.md`](algorithm.md).
 - Only the error *class* of a model call is stored in `ai_invocations` — never
   the prompt, the response, or the key.
+- Local development may opt into returning provider bodies to the requesting
+  browser with `EXPOSE_AI_TRACE=true`. The trace is never logged or persisted,
+  excludes authentication headers, and is forcibly disabled in production.
 - Setting `AI_PROVIDER=local` keeps every conversation on the machine. This is
   the correct setting for sensitive data until Phase 8.
 
 - [ ] Users are told, before use, that text goes to a third party when a hosted
       model is configured
 - [ ] `AI_PROVIDER=local` is documented as the private option
+- [ ] `EXPOSE_AI_TRACE` is false outside a private local development session
 
 ---
 

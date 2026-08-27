@@ -53,6 +53,27 @@ export function ResultPanel({ result }: { result: AnalyzeResponse }) {
         </div>
       </header>
 
+      {meta.usage ? (
+        <div
+          className="usage"
+          title={
+            meta.usage.source === 'estimated'
+              ? 'Approximate token count from prompt and reply length. The offline engine does not bill tokens.'
+              : 'Token counts reported by the model host for this request.'
+          }
+        >
+          <span className="label">Tokens this request</span>
+          <strong>{meta.usage.total_tokens.toLocaleString()}</strong>
+          <span className="usage__parts">
+            {meta.usage.prompt_tokens.toLocaleString()} prompt ·{' '}
+            {meta.usage.completion_tokens.toLocaleString()} completion
+          </span>
+          <span className={`usage__source usage__source--${meta.usage.source}`}>
+            {meta.usage.source === 'estimated' ? 'estimated' : 'measured'}
+          </span>
+        </div>
+      ) : null}
+
       {meta.degraded ? (
         <p className="notice notice--warn">
           <strong>The AI model did not answer.</strong> This reading came from Lifelog's offline
@@ -68,6 +89,36 @@ export function ResultPanel({ result }: { result: AnalyzeResponse }) {
           Read by the AI model ({(meta.model ?? '').replace(/:free$/, '') || 'hosted'}).
         </p>
       )}
+
+      {meta.ai_exchange ? (
+        <section className="group exchange" aria-label="AI provider exchange">
+          <div className="exchange__head">
+            <div>
+              <h3 className="group__title">AI request and response</h3>
+              <p className="muted">
+                Exact JSON bodies for this request. Authentication headers and the API key are excluded.
+              </p>
+            </div>
+            <span className="exchange__provider">
+              {meta.ai_exchange.provider} · {meta.ai_exchange.model}
+            </span>
+          </div>
+          <div className="exchange__grid">
+            <details className="exchange__part" open>
+              <summary>Shared with AI</summary>
+              <pre className="json" aria-label="Request sent to AI provider">
+                {JSON.stringify(meta.ai_exchange.request, null, 2)}
+              </pre>
+            </details>
+            <details className="exchange__part" open>
+              <summary>Raw API response</summary>
+              <pre className="json" aria-label="Raw response from AI provider">
+                {JSON.stringify(meta.ai_exchange.response, null, 2)}
+              </pre>
+            </details>
+          </div>
+        </section>
+      ) : null}
 
       {!meta.persisted ? (
         <p className="notice notice--warn">

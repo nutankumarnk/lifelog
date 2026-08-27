@@ -36,6 +36,9 @@ half-filled file degrades cleanly instead of producing a confusing 401.
 # --- AI provider ------------------------------------------------------------
 # Required only for hosted-model analysis. Without it Lifelog runs the offline
 # rule engine, and everything still works at lower extraction quality.
+# Get one at https://aistudio.google.com/apikey
+GEMINI_API_KEY = <paste-your-gemini-key-here>
+
 # Get one at https://openrouter.ai/keys
 OPENROUTER_API_KEY = <paste-your-openrouter-key-here>
 
@@ -54,10 +57,11 @@ so a stray note can never become an environment variable:
 
 | Name                 | Required | Used for                                     |
 | -------------------- | -------- | -------------------------------------------- |
+| `GEMINI_API_KEY`     | No       | Hosted model analysis via Gemini              |
 | `OPENROUTER_API_KEY` | No       | Hosted model analysis via OpenRouter          |
 | `OPENAI_API_KEY`     | No       | Reserved — no provider implemented yet        |
 | `ANTHROPIC_API_KEY`  | No       | Reserved — no provider implemented yet        |
-| `GOOGLE_API_KEY`     | No       | Reserved — no provider implemented yet        |
+| `GOOGLE_API_KEY`     | No       | Reserved for other Google APIs                 |
 | `DATABASE_URL`       | No       | Postgres connection string                    |
 | `TEST_DATABASE_URL`  | No       | Postgres connection string for the test suite |
 
@@ -68,7 +72,7 @@ To add a name, extend `ALLOWED_SECRET_NAMES` in
 
 ## Rules this file follows
 
-1. **The real environment always wins.** If `OPENROUTER_API_KEY` is already set
+1. **The real environment always wins.** If an API key is already set
    in the process environment, the value here is ignored. A file in a working
    copy can never shadow a deployment secret.
 2. **Permissions are enforced.** If `secrets/API-KEYS.md` is readable by other
@@ -89,7 +93,7 @@ wire it up. When they do:
 - Write it **only** to `secrets/API-KEYS.md`. Never to `.env.example`, a test
   fixture, a code comment, a commit message, or documentation.
 - Never print the value back — not in your summary, not in a log line, not in a
-  code block. Refer to it as `OPENROUTER_API_KEY`.
+  code block. Refer to it only by its environment-variable name.
 - Never `git add secrets/API-KEYS.md`. It is gitignored; keep it that way.
 - Run `npm run keys:check` before committing, and stop if it reports a finding.
 

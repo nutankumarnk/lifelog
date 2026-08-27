@@ -35,6 +35,24 @@ export const AnalyzeRequestSchema = z.object({
 });
 export type AnalyzeRequest = z.infer<typeof AnalyzeRequestSchema>;
 
+export const TokenUsageSchema = z.object({
+  prompt_tokens: z.number().int().min(0),
+  completion_tokens: z.number().int().min(0),
+  total_tokens: z.number().int().min(0),
+  /** `provider` = host-reported; `estimated` = length-based approximation. */
+  source: z.enum(['provider', 'estimated']),
+});
+export type TokenUsage = z.infer<typeof TokenUsageSchema>;
+
+export const AiExchangeSchema = z.object({
+  provider: z.string(),
+  model: z.string(),
+  /** Exact HTTP body sent to the provider. Authentication headers are excluded. */
+  request: z.unknown(),
+  /** Exact successful JSON body returned by the provider. */
+  response: z.unknown(),
+});
+
 export const AnalyzeResponseSchema = z.object({
   conversationId: z.string().uuid(),
   analysisId: z.string().uuid(),
@@ -46,6 +64,9 @@ export const AnalyzeResponseSchema = z.object({
     persisted: z.boolean(),
     latency_ms: z.number().int().min(0),
     schema_version: z.string(),
+    usage: TokenUsageSchema,
+    /** Present only when explicitly enabled for local development. */
+    ai_exchange: AiExchangeSchema.optional(),
   }),
 });
 export type AnalyzeResponse = z.infer<typeof AnalyzeResponseSchema>;

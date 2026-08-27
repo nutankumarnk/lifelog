@@ -12,7 +12,10 @@ import type { ConversationService } from '../services/conversation.service.js';
 import { ANALYSIS_SCHEMA_VERSION } from '../schemas/analysis.schema.js';
 
 export class ConversationController {
-  constructor(private readonly service: ConversationService) {}
+  constructor(
+    private readonly service: ConversationService,
+    private readonly exposeAiTrace = false,
+  ) {}
 
   analyze = async (request: FastifyRequest, reply: FastifyReply): Promise<AnalyzeResponse> => {
     const parsed = AnalyzeRequestSchema.safeParse(request.body);
@@ -51,6 +54,15 @@ export class ConversationController {
         persisted: result.persisted,
         latency_ms: result.latencyMs,
         schema_version: ANALYSIS_SCHEMA_VERSION,
+        usage: {
+          prompt_tokens: result.usage.promptTokens ?? 0,
+          completion_tokens: result.usage.completionTokens ?? 0,
+          total_tokens: result.usage.totalTokens ?? (result.usage.promptTokens ?? 0) + (result.usage.completionTokens ?? 0),
+          source: result.usage.source,
+        },
+        ...(this.exposeAiTrace && result.aiExchange
+          ? { ai_exchange: result.aiExchange }
+          : {}),
       },
     };
   };

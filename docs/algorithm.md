@@ -171,7 +171,9 @@ legitimately both a `PAST_EVENT` and a `MEMORY`.
 ## 6. Temporal interpretation
 
 Lifelog does all date arithmetic itself, from the user's own phrase, relative to
-a reference time supplied by the request (or the server clock).
+a reference time supplied by the request (or the server clock). That same instant
+is sent to the model as `CURRENT DATE AND TIME` (user timezone) so it can judge
+tense; it must not emit computed ISO dates.
 
 Recognised, roughly in order of confidence:
 

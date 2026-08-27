@@ -19,6 +19,7 @@ const SECRET_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
   { pattern: /sk-proj-[A-Za-z0-9_-]{16,}/g, label: 'openai_key' },
   { pattern: /sk-ant-[A-Za-z0-9_-]{16,}/g, label: 'anthropic_key' },
   { pattern: /\bsk-[A-Za-z0-9]{20,}\b/g, label: 'api_key' },
+  { pattern: /\bAQ\.[0-9A-Za-z_-]{30,}\b/g, label: 'gemini_key' },
   { pattern: /\bAIza[0-9A-Za-z_-]{30,}\b/g, label: 'google_key' },
   { pattern: /\bgh[pousr]_[A-Za-z0-9]{20,}\b/g, label: 'github_token' },
   { pattern: /\bey[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\b/g, label: 'jwt' },

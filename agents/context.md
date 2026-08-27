@@ -3,7 +3,7 @@
 Short and current by design. If something here is stale, fix it in the same
 change that made it stale.
 
-**Last updated:** 2026-08-19 · **Version:** 1.0.0
+**Last updated:** 2026-08-27 · **Version:** 1.0.0
 
 ---
 
@@ -45,9 +45,10 @@ and Phase 5.
 | Frontend | Vite on port **5319**, proxying `/api` and `/health` |
 | Database | PostgreSQL 16, Docker service on port **5434**, databases `lifelog` and `lifelog_test` |
 | ORM | Drizzle 0.45, migrations in `backend/drizzle/` |
-| Default AI provider | `auto` — OpenRouter when a key exists, otherwise the local rule engine |
-| Default model | `google/gemma-4-26b-a4b-it:free` |
-| Tests | 158, `npm test`, Vitest |
+| Active local AI provider | Direct Gemini (`AI_PROVIDER=gemini`); OpenRouter and local remain available |
+| Active Gemini model | `gemini-flash-latest` |
+| Retained OpenRouter model | `google/gemma-4-26b-a4b-it:free` |
+| Tests | 194, `npm test`, Vitest |
 | Auth | **None.** Single implicit local user. |
 
 ## Known limitations

@@ -191,6 +191,18 @@ export interface AnalyzeResponse {
     persisted: boolean;
     latency_ms: number;
     schema_version: string;
+    usage: {
+      prompt_tokens: number;
+      completion_tokens: number;
+      total_tokens: number;
+      source: 'provider' | 'estimated';
+    };
+    ai_exchange?: {
+      provider: string;
+      model: string;
+      request: unknown;
+      response: unknown;
+    };
   };
 }
 

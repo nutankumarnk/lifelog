@@ -171,6 +171,8 @@ export class AnalysisRepository {
             status: attempt.status,
             attempt: attempt.attempt,
             latencyMs: attempt.latencyMs,
+            promptTokens: attempt.usage?.promptTokens ?? null,
+            completionTokens: attempt.usage?.completionTokens ?? null,
             // Only the error class is stored. Never the prompt or the response.
             errorCode: attempt.errorKind ?? null,
           })),

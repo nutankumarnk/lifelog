@@ -29,7 +29,7 @@ model-specific behaviour contained in one directory.
         │         │
         │         │  segment → algorithm draft
         │         │  Reminder/Task enrich, stance, gaps
-        │         │  optional Gemma teacher → reconcile
+        │         │  optional hosted extraction → reconcile
         │         ▼
         │    AI Provider             ai/registry.ts → ai/*.provider.ts
         │         │     retry, failover, degrade, teacher patches
@@ -139,6 +139,7 @@ tolerant JSON extraction.
 | File | Role |
 | --- | --- |
 | `provider.ts` | The `AiProvider` interface and `AiProviderError` taxonomy |
+| `gemini.provider.ts` | Hosted Gemini via Google's `generateContent` API |
 | `openrouter.provider.ts` | Hosted models via OpenRouter's OpenAI-compatible API |
 | `local.provider.ts` | Offline rule engine, so Lifelog works with no key and no network |
 | `mock.provider.ts` | Scriptable provider for deterministic tests |
@@ -235,7 +236,7 @@ fallible. The user's own words are not. Ordering the writes this way means the
 worst case is a conversation with no analysis, which can be fixed later, rather
 than an analysis with no conversation, which cannot be verified at all.
 
-**Failure degrades rather than propagates.** A timeout falls back to the offline
-engine. A failed analysis write still returns the analysis. A model that returns
-broken JSON gets repaired, and if it cannot be repaired the fallback answers.
-The user gets a worse answer, with a warning saying so, instead of an error.
+**Failure behaviour is explicit per runtime.** OpenRouter mode can fall back to
+the offline engine and report degradation. Gemini mode currently surfaces
+provider failures so integration problems are visible. A failed analysis write
+still returns the analysis, and malformed JSON is repaired where possible.

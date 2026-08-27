@@ -56,16 +56,27 @@ export function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
-    fetchHealth(controller.signal)
-      .then((value) => {
+    let controller: AbortController | null = null;
+
+    const checkHealth = async () => {
+      controller?.abort();
+      const current = new AbortController();
+      controller = current;
+      try {
+        const value = await fetchHealth(current.signal);
         setHealth(value);
         setHealthError(false);
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) setHealthError(true);
-      });
-    return () => controller.abort();
+      } catch {
+        if (!current.signal.aborted) setHealthError(true);
+      }
+    };
+
+    void checkHealth();
+    const interval = window.setInterval(() => void checkHealth(), 5_000);
+    return () => {
+      window.clearInterval(interval);
+      controller?.abort();
+    };
   }, []);
 
   useEffect(() => {
@@ -196,7 +207,7 @@ export function App() {
                 <p className="muted">
                   Asking the AI model… {(elapsedMs / 1000).toFixed(1)}s
                   {elapsedMs > 12_000
-                    ? ' — still waiting on the hosted model. If it does not finish, Lifelog will answer from the offline engine.'
+                    ? ' — still waiting on the hosted model. If it exceeds the deadline, you can try again.'
                     : ''}
                 </p>
               </div>

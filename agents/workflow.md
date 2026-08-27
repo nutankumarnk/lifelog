@@ -61,7 +61,7 @@ structure. New code should be indistinguishable from what is already there.
 ### 5. Run the tests
 
 ```bash
-npm test                    # 158 tests
+npm test                    # 194 tests
 cd backend && npx tsc --noEmit
 npm run keys:check
 ```

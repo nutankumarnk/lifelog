@@ -52,12 +52,24 @@ happens behind it.
 | `conversationId` | UUID | The stored conversation. Always present. |
 | `analysisId` | UUID | All-zero UUID when the analysis was produced but could not be stored. |
 | `analysis` | object | The structured reading. See below. |
-| `meta.provider` | string | `openrouter`, `local` or `mock` |
+| `meta.provider` | string | `gemini`, `openrouter`, `local` or `mock` |
 | `meta.model` | string | Model identifier that answered |
 | `meta.degraded` | boolean | True when a fallback provider answered |
 | `meta.persisted` | boolean | False when the analysis could not be stored |
 | `meta.latency_ms` | integer | End-to-end analysis time |
 | `meta.schema_version` | string | Version of the analysis contract |
+| `meta.usage` | object | Token counts for this request. Always present. |
+| `meta.usage.prompt_tokens` | integer | Tokens in the prompt (instructions + user message) |
+| `meta.usage.completion_tokens` | integer | Tokens in the model reply |
+| `meta.usage.total_tokens` | integer | `prompt_tokens + completion_tokens` (includes retries) |
+| `meta.usage.source` | enum | `provider` when the host reported the counts; `estimated` for the offline engine or a host that omitted `usage` (~4 characters per token) |
+| `meta.ai_exchange` | object | Development-only provider request/response bodies; present only with `EXPOSE_AI_TRACE=true`, never in production |
+
+`meta.ai_exchange.request` is the exact JSON body sent to the provider and
+`meta.ai_exchange.response` is its full successful JSON response. Authentication
+headers and API keys are never included. These values repeat private
+conversation content, are not logged or persisted, and must not be enabled on a
+shared or public server.
 
 #### The `analysis` object
 
@@ -181,7 +193,13 @@ real output from the request above.
     "degraded": false,
     "persisted": true,
     "latency_ms": 4,
-    "schema_version": "1.0.0"
+    "schema_version": "1.0.0",
+    "usage": {
+      "prompt_tokens": 182,
+      "completion_tokens": 47,
+      "total_tokens": 229,
+      "source": "estimated"
+    }
   }
 }
 ```

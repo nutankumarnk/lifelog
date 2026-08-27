@@ -408,6 +408,75 @@ change.
 
 ---
 
+## D-015 — Direct Gemini API as an optional hosted provider
+
+**Date:** 2026-08-27 · **Status:** Accepted
+
+**Problem.** Local development needs to use a Google Gemini API key directly,
+without removing the existing OpenRouter integration that may be used again.
+The owner also wants provider failures to be visible instead of silently using
+the lower-quality offline engine for this configuration.
+
+**Options considered.** Replace OpenRouter with Gemini; route Gemini through
+OpenRouter; add a direct Gemini adapter beside OpenRouter; keep or disable the
+offline fallback for direct Gemini requests.
+
+**Chosen:** add a separate `gemini` provider over the REST `generateContent`
+endpoint using native `fetch`. Keep OpenRouter unchanged. An explicit
+`AI_PROVIDER=gemini` configuration has no offline fallback; `local` remains
+available as an explicit provider. Auto mode keeps OpenRouter precedence, then
+uses Gemini when that is the available hosted credential.
+
+**Why.** A separate adapter keeps vendor-specific HTTP details inside `src/ai/`
+and preserves the provider abstraction. Plain `fetch` adds no dependency.
+Disabling fallback only for the explicit Gemini mode makes authentication,
+quota and model errors visible during the current integration instead of
+returning an answer from a different engine.
+
+**Trade-offs.** Gemini becomes another adapter to test and maintain. With no
+fallback, a Gemini outage makes analysis unavailable even though the local
+engine still exists. `gemini-flash-latest` is a moving alias, so behaviour can
+change without a repository change; the grounded validation pipeline limits
+the effect but cannot prevent quality drift.
+
+**Future impact.** OpenRouter can be re-enabled by configuration alone. If
+availability becomes more important than surfacing Gemini failures, a fallback
+can be restored in the registry without changing the adapter or pipeline.
+
+---
+
+## D-016 — Development-only provider exchange visibility
+
+**Date:** 2026-08-27 · **Status:** Accepted
+
+**Problem.** While evaluating model quality, the owner needs to compare what
+Lifelog sent to the hosted provider with the provider's unprocessed response for
+each analysis. Those bodies contain private conversation text and must not
+become a production data leak.
+
+**Options considered.** Log provider bodies; persist them in `ai_invocations`;
+return them on every API response; expose them only through an explicit local
+development flag.
+
+**Chosen:** `EXPOSE_AI_TRACE=true` adds `meta.ai_exchange` to successful analyze
+responses outside production. It contains the exact provider request and
+response JSON bodies, but never authentication headers or the API key. The
+exchange is held only in request memory, never logged and never persisted.
+Production suppresses it regardless of the flag.
+
+**Why.** Returning the exchange to the same local client that submitted the
+conversation makes provider behaviour inspectable without creating a second
+copy in logs or the database. An explicit flag makes the privacy cost visible.
+
+**Trade-offs.** The local API response now repeats sensitive text and can expose
+model internals to anyone who can reach the unauthenticated development server.
+It must remain localhost-only and must not be enabled in shared environments.
+
+**Future impact.** Replace this temporary console aid with authenticated,
+role-gated diagnostics before any production debugging surface is introduced.
+
+---
+
 ## Template for new entries
 
 ```

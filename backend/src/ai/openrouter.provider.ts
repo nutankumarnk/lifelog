@@ -18,8 +18,9 @@
  *   - Timeouts and rate limits are not retried. The registry falls back to
  *     the offline engine instead of waiting on a saturated free queue.
  */
-import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult } from './provider.js';
+import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult, type ProviderUsage } from './provider.js';
 import { extractChatText, parseModelJson } from './json.js';
+import { estimateUsage, reportedUsage, sumUsage } from './usage.js';
 
 /** Enough for a compact multi-item analysis JSON, with headroom if a host still thinks. */
 const MAX_COMPLETION_TOKENS = 2048;
@@ -68,7 +69,7 @@ interface ChatCompletionResponse {
       reasoning_content?: unknown;
     };
   }>;
-  usage?: { prompt_tokens?: number; completion_tokens?: number };
+  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
   error?: { message?: string; code?: string | number };
   model?: string;
 }
@@ -135,8 +136,19 @@ export class OpenRouterProvider implements AiProvider {
         throw this.toHttpError(response.status, await this.safeText(response));
       }
 
+      const usages: ProviderUsage[] = [];
+      const takeUsage = (payload: ChatCompletionResponse, content: string): void => {
+        const reported = reportedUsage(
+          payload.usage?.prompt_tokens,
+          payload.usage?.completion_tokens,
+          payload.usage?.total_tokens,
+        );
+        usages.push(reported ?? estimateUsage(`${request.instructions}\n${request.userMessage}`, content));
+      };
+
       let payload = await this.readPayload(response);
       let content = extractChatText(payload);
+      takeUsage(payload, content);
       let parsed = parseModelJson(content);
 
       if (!parsed.ok && Date.now() < deadline - 250) {
@@ -146,6 +158,7 @@ export class OpenRouterProvider implements AiProvider {
         }
         payload = await this.readPayload(response);
         content = extractChatText(payload);
+        takeUsage(payload, content);
         parsed = parseModelJson(content);
       }
 
@@ -159,10 +172,7 @@ export class OpenRouterProvider implements AiProvider {
         raw: parsed.value,
         rawText: content,
         latencyMs: Date.now() - startedAt,
-        usage: {
-          promptTokens: payload.usage?.prompt_tokens,
-          completionTokens: payload.usage?.completion_tokens,
-        },
+        usage: sumUsage(usages) ?? estimateUsage(`${request.instructions}\n${request.userMessage}`, content),
       };
     } catch (error) {
       if (error instanceof AiProviderError) throw error;

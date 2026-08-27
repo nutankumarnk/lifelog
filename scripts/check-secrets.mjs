@@ -27,6 +27,7 @@ const RULES = [
   { id: 'openrouter-key', description: 'OpenRouter API key', pattern: /sk-or-v1-[A-Za-z0-9]{20,}/g },
   { id: 'openai-key', description: 'OpenAI API key', pattern: /sk-(?:proj|svcacct)-[A-Za-z0-9_-]{20,}/g },
   { id: 'anthropic-key', description: 'Anthropic API key', pattern: /sk-ant-[A-Za-z0-9_-]{20,}/g },
+  { id: 'gemini-key', description: 'Gemini API key', pattern: /\bAQ\.[0-9A-Za-z_-]{30,}\b/g },
   { id: 'google-key', description: 'Google API key', pattern: /\bAIza[0-9A-Za-z_-]{35}\b/g },
   { id: 'github-token', description: 'GitHub token', pattern: /\bgh[pousr]_[A-Za-z0-9]{30,}\b/g },
   { id: 'slack-token', description: 'Slack token', pattern: /\bxox[abposr]-[A-Za-z0-9-]{10,}\b/g },

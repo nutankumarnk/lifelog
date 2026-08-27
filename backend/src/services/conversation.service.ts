@@ -16,7 +16,7 @@
  *      recover it later.
  */
 import type { AiRuntimeOptions } from '../ai/registry.js';
-import { AiProviderError } from '../ai/provider.js';
+import { AiProviderError, type ProviderUsage } from '../ai/provider.js';
 import { AppError } from '../errors/app-error.js';
 import { understandConversation } from '../intelligence/pipeline.js';
 import type { ActionItemRepository } from '../repositories/action-item.repository.js';
@@ -34,6 +34,8 @@ export interface AnalyzeResult {
   degraded: boolean;
   persisted: boolean;
   latencyMs: number;
+  usage: ProviderUsage;
+  aiExchange: { provider: string; model: string; request: unknown; response: unknown } | null;
 }
 
 export interface ConversationServiceDeps {
@@ -45,6 +47,7 @@ export interface ConversationServiceDeps {
   /** Injected so tests can pin "now" instead of depending on the wall clock. */
   clock?: () => Date;
   logger?: {
+    info?: (context: Record<string, unknown>, message: string) => void;
     warn: (context: Record<string, unknown>, message: string) => void;
     error: (context: Record<string, unknown>, message: string) => void;
   };
@@ -195,6 +198,22 @@ export class ConversationService {
       });
     }
 
+    this.deps.logger?.info?.(
+      {
+        conversationId,
+        provider: understanding.provider,
+        model: understanding.model,
+        prompt_tokens: understanding.usage.promptTokens ?? 0,
+        completion_tokens: understanding.usage.completionTokens ?? 0,
+        total_tokens: understanding.usage.totalTokens ?? 0,
+        usage_source: understanding.usage.source,
+        latency_ms: understanding.latencyMs,
+        degraded: understanding.degraded,
+        persisted,
+      },
+      'conversation analyzed',
+    );
+
     return {
       conversationId,
       analysisId,
@@ -204,6 +223,8 @@ export class ConversationService {
       degraded: understanding.degraded,
       persisted,
       latencyMs: understanding.latencyMs,
+      usage: understanding.usage,
+      aiExchange: understanding.aiExchange,
     };
   }
 }

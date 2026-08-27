@@ -22,6 +22,7 @@ import { resolve } from 'node:path';
 
 /** Key names Lifelog will accept from the keys file. Anything else is ignored. */
 export const ALLOWED_SECRET_NAMES = [
+  'GEMINI_API_KEY',
   'OPENROUTER_API_KEY',
   'OPENAI_API_KEY',
   'ANTHROPIC_API_KEY',

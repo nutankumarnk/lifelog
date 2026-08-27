@@ -47,6 +47,23 @@ describe('OpenRouterProvider', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('records prompt and completion tokens from the host', async () => {
+    const fetchImpl = vi.fn(async () =>
+      jsonResponse({
+        choices: [{ message: { content: goodJson } }],
+        usage: { prompt_tokens: 412, completion_tokens: 88, total_tokens: 500 },
+      }),
+    );
+
+    const result = await makeProvider(asFetch(fetchImpl)).analyze(request);
+    expect(result.usage).toEqual({
+      promptTokens: 412,
+      completionTokens: 88,
+      totalTokens: 500,
+      source: 'provider',
+    });
+  });
+
   it('reads content when the host returns an array of parts', async () => {
     const fetchImpl = vi.fn(async () =>
       jsonResponse({

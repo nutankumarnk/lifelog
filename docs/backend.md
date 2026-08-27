@@ -78,9 +78,10 @@ Notable settings — full list in `.env.example`:
 | `PORT` | 4319 | |
 | `DATABASE_URL` | — | Required for the analyze endpoint to be enabled |
 | `TEST_DATABASE_URL` | — | Used when `NODE_ENV=test` |
-| `AI_PROVIDER` | `auto` | `auto` / `openrouter` / `local` / `mock` |
+| `AI_PROVIDER` | `auto` | `auto` / `gemini` / `openrouter` / `local` / `mock` |
 | `AI_MODEL` | `google/gemma-4-26b-a4b-it:free` | |
-| `AI_TIMEOUT_MS` | 5000 | Hard cap; then local fallback |
+| `GEMINI_MODEL` | `gemini-flash-latest` | Direct Gemini model |
+| `AI_TIMEOUT_MS` | 20000 | Hard cap for hosted calls |
 | `AI_MAX_RETRIES` | 0 | Timeouts are not retried |
 | `MAX_INPUT_CHARS` | 20000 | |
 | `RATE_LIMIT_MAX` | 60 | Per window, per IP |
@@ -222,7 +223,7 @@ network. See [`security-checklist.md`](security-checklist.md).
 npm run db:up          # PostgreSQL on 5434
 npm run db:migrate     # apply migrations
 npm run dev:backend    # tsx watch, port 4319
-npm test               # 158 tests
+npm test               # 194 tests
 npm run typecheck      # tsc --noEmit
 ```
 

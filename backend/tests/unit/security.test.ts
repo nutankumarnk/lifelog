@@ -20,6 +20,7 @@ import { AppError } from '../../src/errors/app-error.js';
  */
 const FAKE_OPENROUTER = `sk-or-v1-${'a1b2c3d4'.repeat(4)}`;
 const FAKE_ANTHROPIC = `sk-ant-${'x9y8z7w6'.repeat(4)}`;
+const FAKE_GEMINI = `AQ.${'g7h8j9k0'.repeat(5)}`;
 
 /**
  * The scanner is plain JavaScript so it can run from a git hook with no build
@@ -56,12 +57,14 @@ Some prose explaining things.
 \`\`\`ini
 OPENROUTER_API_KEY = ${FAKE_OPENROUTER}
 ANTHROPIC_API_KEY:${FAKE_ANTHROPIC}
+GEMINI_API_KEY=${FAKE_GEMINI}
 export GOOGLE_API_KEY="quoted-value"
 \`\`\`
 `);
 
     expect(parsed.get('OPENROUTER_API_KEY')).toBe(FAKE_OPENROUTER);
     expect(parsed.get('ANTHROPIC_API_KEY')).toBe(FAKE_ANTHROPIC);
+    expect(parsed.get('GEMINI_API_KEY')).toBe(FAKE_GEMINI);
     expect(parsed.get('GOOGLE_API_KEY')).toBe('quoted-value');
   });
 
@@ -167,6 +170,7 @@ describe('log redaction', () => {
     const samples = [
       FAKE_OPENROUTER,
       FAKE_ANTHROPIC,
+      FAKE_GEMINI,
       `sk-proj-${'q1w2e3r4'.repeat(4)}`,
       `AIza${'B'.repeat(35)}`,
       `ghp_${'c'.repeat(36)}`,
@@ -256,7 +260,7 @@ describe('secret scanner', () => {
     const { RULES } = await loadScanner();
     const ids = RULES.map((rule) => rule.id);
 
-    for (const expected of ['openrouter-key', 'anthropic-key', 'openai-key', 'db-url-with-password', 'private-key-block']) {
+    for (const expected of ['openrouter-key', 'anthropic-key', 'openai-key', 'gemini-key', 'db-url-with-password', 'private-key-block']) {
       expect(ids).toContain(expected);
     }
   });
@@ -271,6 +275,15 @@ describe('secret scanner', () => {
 
     rule!.pattern.lastIndex = 0;
     expect(rule!.pattern.test('OPENROUTER_API_KEY = <paste-your-key-here>')).toBe(false);
+  });
+
+  it('matches the current Gemini credential shape', async () => {
+    const { RULES } = await loadScanner();
+    const rule = RULES.find((candidate) => candidate.id === 'gemini-key');
+    expect(rule).toBeDefined();
+
+    rule!.pattern.lastIndex = 0;
+    expect(rule!.pattern.test(`GEMINI_API_KEY = ${FAKE_GEMINI}`)).toBe(true);
   });
 
   it('never allowlists the private keys file itself', async () => {

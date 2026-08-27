@@ -112,12 +112,18 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
       runtime,
       clock: options.clock,
       logger: {
+        info: (context, message) => app.log.info(context, message),
         warn: (context, message) => app.log.warn(context, message),
         error: (context, message) => app.log.error(context, message),
       },
     });
 
-    await registerConversationRoutes(app, { controller: new ConversationController(service) });
+    await registerConversationRoutes(app, {
+      controller: new ConversationController(
+        service,
+        config.EXPOSE_AI_TRACE && !config.isProduction,
+      ),
+    });
     await registerActionRoutes(app, {
       tasks: new TaskController(actionItems),
       reminders: new ReminderController(actionItems),

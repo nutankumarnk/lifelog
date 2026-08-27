@@ -80,7 +80,8 @@ Concretely, this means:
   is recognised as a reminder, not that a particular sentence came back.
 - **Use the mock provider for failure modes.** Never call a real model in a test.
 - **Every scenario in [`../docs/testing.md`](../docs/testing.md) must keep
-  passing.** If you change behaviour deliberately, update the table and say so.
+  passing.** The current suite has 194 tests. If you change behaviour
+  deliberately, update the table and say so.
 
 ## Security rules
 

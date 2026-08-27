@@ -31,6 +31,13 @@ export interface AnalysisRequest {
 export interface ProviderUsage {
   promptTokens?: number;
   completionTokens?: number;
+  totalTokens?: number;
+  /**
+   * `provider` — the host reported these counts.
+   * `estimated` — approximated from prompt/completion length (offline engine,
+   * or a host that omitted `usage`).
+   */
+  source: 'provider' | 'estimated';
 }
 
 export interface ProviderResult {
@@ -40,6 +47,11 @@ export interface ProviderResult {
   rawText: string;
   usage?: ProviderUsage;
   latencyMs: number;
+  /** Development-only transport bodies. Authentication headers are never included. */
+  exchange?: {
+    request: unknown;
+    response: unknown;
+  };
 }
 
 export interface AiProvider {

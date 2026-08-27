@@ -16,9 +16,10 @@
  * there is no sequential "timeout, then start local" tax.
  */
 import type { AppConfig } from '../config/env.js';
+import { GeminiProvider } from './gemini.provider.js';
 import { LocalRuleProvider } from './local.provider.js';
 import { OpenRouterProvider } from './openrouter.provider.js';
-import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult } from './provider.js';
+import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult, type ProviderUsage } from './provider.js';
 
 export interface ProviderAttempt {
   provider: string;
@@ -26,6 +27,7 @@ export interface ProviderAttempt {
   status: 'ok' | 'error';
   attempt: number;
   latencyMs: number;
+  usage?: ProviderUsage;
   errorKind?: string;
   errorMessage?: string;
 }
@@ -35,6 +37,8 @@ export interface ResolvedAnalysis extends ProviderResult {
   model: string;
   /** True when the primary provider failed and the fallback answered. */
   degraded: boolean;
+  /** True when the answer came from a hosted model rather than a rule engine. */
+  hosted: boolean;
   attempts: ProviderAttempt[];
 }
 
@@ -42,6 +46,8 @@ export interface AiRuntimeOptions {
   primary: AiProvider;
   fallback: AiProvider | null;
   maxRetries: number;
+  /** Whether the pipeline should compare a hosted answer with a local draft. */
+  runLocalDraft?: boolean;
 }
 
 /** Chooses providers from configuration. `auto` prefers a hosted model. */
@@ -51,10 +57,19 @@ export function buildAiRuntime(config: AppConfig, overrides: Partial<AiRuntimeOp
       primary: overrides.primary,
       fallback: overrides.fallback ?? null,
       maxRetries: overrides.maxRetries ?? config.AI_MAX_RETRIES,
+      runLocalDraft: overrides.runLocalDraft,
     };
   }
 
   const local = new LocalRuleProvider();
+
+  const gemini = new GeminiProvider({
+    apiKey: config.GEMINI_API_KEY,
+    model: config.GEMINI_MODEL,
+    baseUrl: config.GEMINI_BASE_URL,
+    timeoutMs: config.AI_TIMEOUT_MS,
+    temperature: config.AI_TEMPERATURE,
+  });
 
   const openrouter = new OpenRouterProvider({
     apiKey: config.OPENROUTER_API_KEY,
@@ -66,7 +81,18 @@ export function buildAiRuntime(config: AppConfig, overrides: Partial<AiRuntimeOp
     appTitle: config.OPENROUTER_APP_TITLE,
   });
 
+  const geminiRuntime: AiRuntimeOptions = {
+    primary: gemini,
+    fallback: null,
+    maxRetries: config.AI_MAX_RETRIES,
+    runLocalDraft: false,
+  };
+
   switch (config.AI_PROVIDER) {
+    case 'gemini':
+      // Explicit Gemini mode intentionally surfaces provider failures. The
+      // offline engine remains available through AI_PROVIDER=local.
+      return geminiRuntime;
     case 'openrouter':
       return { primary: openrouter, fallback: local, maxRetries: config.AI_MAX_RETRIES };
     case 'local':
@@ -74,8 +100,11 @@ export function buildAiRuntime(config: AppConfig, overrides: Partial<AiRuntimeOp
       return { primary: local, fallback: null, maxRetries: 0 };
     case 'auto':
     default:
-      return openrouter.isAvailable()
-        ? { primary: openrouter, fallback: local, maxRetries: config.AI_MAX_RETRIES }
+      if (openrouter.isAvailable()) {
+        return { primary: openrouter, fallback: local, maxRetries: config.AI_MAX_RETRIES };
+      }
+      return gemini.isAvailable()
+        ? geminiRuntime
         : { primary: local, fallback: null, maxRetries: 0 };
   }
 }
@@ -157,6 +186,7 @@ export async function runProviders(
           status: 'ok',
           attempt,
           latencyMs: result.latencyMs || Date.now() - startedAt,
+          usage: result.usage,
         });
         return result;
       } catch (error) {
@@ -196,6 +226,7 @@ export async function runProviders(
       provider: runtime.primary.name,
       model: runtime.primary.model,
       degraded: false,
+      hosted: runtime.primary.name === 'openrouter' || runtime.primary.name === 'gemini',
       attempts,
     };
   }
@@ -210,12 +241,14 @@ export async function runProviders(
         status: 'ok',
         attempt: 1,
         latencyMs: warmed.result.latencyMs,
+        usage: warmed.result.usage,
       });
       return {
         ...warmed.result,
         provider: runtime.fallback.name,
         model: runtime.fallback.model,
         degraded: true,
+        hosted: runtime.fallback.name === 'openrouter' || runtime.fallback.name === 'gemini',
         attempts,
       };
     }
@@ -239,6 +272,7 @@ export async function runProviders(
           provider: runtime.fallback.name,
           model: runtime.fallback.model,
           degraded: true,
+          hosted: runtime.fallback.name === 'openrouter' || runtime.fallback.name === 'gemini',
           attempts,
         };
       }

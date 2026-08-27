@@ -14,7 +14,7 @@ import { evaluateFollowUp } from '../../src/intelligence/follow-up.js';
 import { calibrate, LOW_CONFIDENCE_THRESHOLD, MAX_CONFIDENCE } from '../../src/intelligence/confidence.js';
 import { parseModelJson, extractChatText } from '../../src/ai/json.js';
 import { EMPTY_TEMPORAL, type Item } from '../../src/schemas/analysis.schema.js';
-import { buildInstructions } from '../../src/intelligence/prompt.js';
+import { buildInstructions, buildUserMessage, formatCurrentClock } from '../../src/intelligence/prompt.js';
 import { QUESTION_MARKERS, TASK_MARKERS, containsAny, matchesIn } from '../../src/intelligence/lexicon.js';
 
 /** Wednesday 2025-06-11 10:00 UTC. */
@@ -520,10 +520,36 @@ describe('model JSON recovery', () => {
 });
 
 describe('prompt', () => {
-  const instructions = buildInstructions();
+  const now = new Date('2026-08-21T10:00:00.000Z');
+  const instructions = buildInstructions(now, 'Asia/Kolkata');
+
+  it('tells the model the current date and time in the user timezone', () => {
+    expect(instructions).toContain('CURRENT DATE AND TIME:');
+    expect(instructions).toMatch(/21 August 2026/);
+    expect(instructions).toContain('Asia/Kolkata');
+    expect(instructions).toMatch(/15:30/);
+    expect(instructions).toMatch(/no clock of your own/i);
+  });
+
+  it('repeats the clock on the user turn so it cannot be skipped', () => {
+    const user = buildUserMessage({
+      text: 'Remind me to call the dentist next Monday.',
+      now,
+      timezone: 'Asia/Kolkata',
+    });
+    expect(user).toContain('CURRENT DATE AND TIME:');
+    expect(user).toMatch(/15:30/);
+    expect(user).toContain('Remind me to call the dentist next Monday.');
+  });
+
+  it('falls back to UTC when the timezone is missing or invalid', () => {
+    expect(formatCurrentClock(now, null)).toContain('UTC');
+    expect(formatCurrentClock(now, 'Not/AZone')).toContain('UTC');
+    expect(formatCurrentClock(now, null)).toMatch(/10:00/);
+  });
 
   it('forbids the model from computing dates', () => {
-    expect(instructions).toContain('DO NOT COMPUTE DATES');
+    expect(instructions).toContain('DO NOT COMPUTE ISO DATES');
   });
 
   it('states the task/reminder distinction Lifelog enforces in code', () => {

@@ -10,7 +10,7 @@ import { APP_VERSION, buildServer } from './server.js';
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const { app } = await buildServer({ config });
+  const { app, runtime } = await buildServer({ config });
 
   // Report the keys file by *name* only. Values are never logged or echoed.
   if (config.keysFile.found) {
@@ -21,10 +21,10 @@ async function main(): Promise<void> {
     for (const warning of config.keysFile.warnings) app.log.warn(warning);
   }
 
-  if (!config.hasAiCredentials) {
+  if (!runtime.primary.isAvailable()) {
     app.log.warn(
-      'No OPENROUTER_API_KEY found — using the offline rule engine. ' +
-        'Add a key to secrets/API-KEYS.md to enable the hosted model.',
+      `The configured ${runtime.primary.name} provider is unavailable. ` +
+        'Add its API key to secrets/API-KEYS.md or select another provider.',
     );
   }
 
@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     {
       version: APP_VERSION,
       provider: config.AI_PROVIDER,
-      model: config.hasAiCredentials ? config.AI_MODEL : 'lifelog-rule-engine-v1',
+      model: runtime.primary.model,
     },
     `Lifelog backend listening on http://${config.HOST}:${config.PORT}`,
   );

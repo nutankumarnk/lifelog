@@ -144,6 +144,20 @@ backbone of the pipeline's safety.
 
 ## AI
 
+### Google Gemini API
+
+**Purpose:** Active hosted model access in local development.
+
+**Why:** The owner supplied direct Gemini access. A small REST adapter uses
+native `fetch`, JSON response mode and the shared `AiProvider` interface, so no
+vendor SDK or runtime dependency was added. OpenRouter remains intact.
+
+**Status:** Active through `AI_PROVIDER=gemini` and
+`GEMINI_MODEL=gemini-flash-latest`. Explicit Gemini mode has no offline fallback
+while the integration is being evaluated.
+
+**Replacement:** Select `openrouter` or `local`; no pipeline change is needed.
+
 ### OpenRouter
 
 **Purpose:** Hosted model access.
@@ -161,7 +175,7 @@ endpoint — including a self-hosted one — works by changing
 
 ### Gemma 4 26B A4B (`google/gemma-4-26b-a4b-it:free`)
 
-**Purpose:** The default reasoning model.
+**Purpose:** The default OpenRouter model when that provider is selected.
 
 **Why:** Follows a JSON schema reliably, handles code-switched Indian-English
 input, and the free OpenRouter tier is cheap enough to run on every message
@@ -169,23 +183,23 @@ someone writes about their day. Open weights, so it can be self-hosted if
 hosting economics change. It is not the strongest model available and does not
 need to be — Lifelog verifies everything it says.
 
-**Status:** Current default (switched from Gemma 3 27B on 2026-08-20). Expected
-to change again; that is the design.
+**Status:** Retained for future OpenRouter use (switched from Gemma 3 27B on
+2026-08-20). Expected to change again; that is the design.
 
 **Replacement:** Set `AI_MODEL`. Nothing else. Then run the behaviour suite,
 which tests Lifelog's guarantees rather than any model's wording.
 
 ### The local rule engine
 
-**Purpose:** Fallback provider, and the default when no key is configured.
+**Purpose:** Explicit offline provider and fallback for OpenRouter/auto mode.
 
 **Why:** Lifelog must work with no credentials and no network — a fresh clone
 runs end to end in one command, and a provider outage degrades quality instead of
 losing a user's message. It also makes the entire test suite deterministic and
 offline.
 
-**Status:** Stable. Deliberately simpler than a hosted model. It is a floor, not
-a competitor.
+**Status:** Stable but inactive in explicit Gemini mode, including as a
+comparison draft. Deliberately simpler than a hosted model.
 
 ---
 
@@ -249,7 +263,7 @@ value, so the console is hand-written CSS in one file.
 fast, and its API is familiar to anyone who has used Jest. Shares Vite's
 config model, so there is one build story in the repository.
 
-**Status:** Stable. 158 tests.
+**Status:** Stable. 194 tests.
 
 **Note:** Database-backed tests are serialised because they truncate shared
 tables. Unit and behaviour tests run in parallel.

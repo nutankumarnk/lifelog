@@ -13,6 +13,8 @@
  */
 import { LocalRuleProvider } from '../ai/local.provider.js';
 import { runProviders, type AiRuntimeOptions, type ProviderAttempt } from '../ai/registry.js';
+import { usageOrEstimate } from '../ai/usage.js';
+import type { ProviderUsage } from '../ai/provider.js';
 import { enrichActionItems } from '../domain/action-items.js';
 import {
   AnalysisSchema,
@@ -61,9 +63,12 @@ export interface UnderstandResult {
   model: string;
   degraded: boolean;
   latencyMs: number;
+  usage: ProviderUsage;
   attempts: ProviderAttempt[];
   /** The model's unmodified output, for debugging. Not returned by the API. */
   rawModelOutput: unknown;
+  /** Provider transport bodies, when the adapter exposes them. Never includes credentials. */
+  aiExchange: { provider: string; model: string; request: unknown; response: unknown } | null;
 }
 
 function detectLanguage(text: string, reported: string | undefined): string {
@@ -251,7 +256,7 @@ export async function understandConversation(
   const startedAt = Date.now();
   const segments = segmentConversation(request.text);
 
-  const instructions = buildInstructions();
+  const instructions = buildInstructions(request.now, request.timezone);
   const userMessage = buildUserMessage(request);
 
   const providerRequest = {
@@ -290,7 +295,7 @@ export async function understandConversation(
   }
 
   let degraded = providerResult.degraded;
-  let usedHostedModel = !degraded && runtime.primary.name === 'openrouter';
+  let usedHostedModel = !degraded && providerResult.hosted;
 
   if (degraded) {
     const failure = providerResult.attempts.find((attempt) => attempt.status === 'error');
@@ -305,11 +310,11 @@ export async function understandConversation(
     });
   }
 
-  // --- Training draft (offline engine, never overrides a model answer) ----
-  // Runs only when the model answered, so we can measure the algorithm against
-  // it later. It costs a few milliseconds and never changes the response.
+  // --- Optional training draft (never overrides a model answer) -----------
+  // Providers may disable this comparison when the offline engine should be
+  // completely inactive for a runtime configuration.
   let algorithmConfidence = 0.5;
-  if (usedHostedModel) {
+  if (usedHostedModel && runtime.runLocalDraft !== false) {
     try {
       const local = new LocalRuleProvider();
       const localResult = await local.analyze({
@@ -375,13 +380,30 @@ export async function understandConversation(
     repaired: draft.warnings.some((warning) => warning.code === 'INTENT_COERCED'),
   });
 
+  const usage = usageOrEstimate(
+    providerResult.usage,
+    `${instructions}\n${userMessage}`,
+    typeof providerResult.rawText === 'string' && providerResult.rawText
+      ? providerResult.rawText
+      : JSON.stringify(providerResult.raw ?? {}),
+  );
+
   return {
     analysis,
     provider: providerResult.provider,
     model: providerResult.model,
     degraded,
     latencyMs: Date.now() - startedAt,
+    usage,
     attempts: providerResult.attempts,
     rawModelOutput: providerResult.raw,
+    aiExchange: providerResult.exchange
+      ? {
+          provider: providerResult.provider,
+          model: providerResult.model,
+          request: providerResult.exchange.request,
+          response: providerResult.exchange.response,
+        }
+      : null,
   };
 }

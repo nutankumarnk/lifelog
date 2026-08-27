@@ -8,6 +8,71 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-08-27 — 1.1.5
+
+### Added
+
+**Direct Gemini API provider.** `AI_PROVIDER=gemini` now calls Google's
+`generateContent` REST endpoint, requests JSON output, records provider token
+usage, and uses the existing grounding and validation pipeline. OpenRouter is
+unchanged and remains selectable. Explicit Gemini mode has no offline fallback
+and does not run the local comparison draft, so provider failures are visible.
+The Gemini credential shape is also covered by secret scanning and log
+redaction.
+
+*Why:* use the owner's direct Gemini access now without removing the OpenRouter
+option that may be useful later. ([D-015](decision.md))
+
+**Development-only AI exchange inspector.** With `EXPOSE_AI_TRACE=true`, every
+successful analysis shows the exact JSON body sent to Gemini and its full raw
+JSON response in the test console. Credentials are excluded; bodies are never
+logged or persisted; production forcibly suppresses the field.
+
+*Why:* make model behaviour inspectable request by request without creating a
+sensitive provider-body log. ([D-016](decision.md))
+
+### Fixed
+
+**The frontend health badge now recovers after startup races.** It polls every
+five seconds instead of checking only once, so Vite starting slightly before
+Fastify no longer leaves a stale “backend offline” badge. Gemini-mode loading
+text also no longer promises an offline fallback that is intentionally disabled.
+
+---
+
+## 2026-08-21 — 1.1.4
+
+### Changed
+
+**The model is told the current date and time on every request.** Models have no
+clock. The system prompt and the user message now both open with
+`CURRENT DATE AND TIME` in the client's timezone (weekday, date, time, offset,
+IANA zone). The console already sent `occurred_at` and `timezone`; they were
+buried as a UTC "Reference time" line the model could miss, and the weekday was
+taken from UTC — which is the wrong day late at night in India. Date arithmetic
+is still Lifelog's job (`temporal.ts`); the clock is only so the model can
+read "yesterday" / "tomorrow" against a real instant.
+
+*Why:* without an explicit now, relative language is unanchored.
+
+---
+
+## 2026-08-21 — 1.1.3
+
+### Added
+
+**Each analyze request now reports token usage.** OpenRouter already returned
+`usage`; it was discarded. Prompt, completion and total tokens are now on
+`meta.usage`, logged (counts only — never the conversation text), stored on
+`ai_invocations`, and shown on the test console. The offline engine estimates
+at ~4 characters per token and marks `source: "estimated"` so it is not
+confused with a billed count.
+
+*Why:* there was no way to see how expensive a request was without reading
+raw provider payloads.
+
+---
+
 ## 2026-08-20 — 1.1.2
 
 ### Fixed

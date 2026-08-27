@@ -26,8 +26,11 @@ export const FIXED_NOW = new Date('2025-06-11T10:00:00.000Z');
 let handle: DbHandle | null = null;
 let migrated = false;
 
-export function testConfig(): AppConfig {
-  return loadConfig({ fresh: true });
+export function testConfig(overrides: Record<string, string | undefined> = {}): AppConfig {
+  return loadConfig({
+    fresh: true,
+    overrides: { EXPOSE_AI_TRACE: 'false', ...overrides },
+  });
 }
 
 /** Returns the test database, running migrations once per process. */
@@ -64,6 +67,7 @@ export interface TestAppOptions {
   provider?: AiProvider;
   fallback?: AiProvider | null;
   maxRetries?: number;
+  exposeAiTrace?: boolean;
   /** Pass null to build the app with no database, for failure-path tests. */
   db?: Database | null;
   now?: Date;
@@ -79,7 +83,7 @@ export async function buildTestApp(options: TestAppOptions = {}): Promise<TestAp
   const db = options.db !== undefined ? options.db : await getTestDb();
 
   const built = await buildServer({
-    config: testConfig(),
+    config: testConfig({ EXPOSE_AI_TRACE: String(options.exposeAiTrace ?? false) }),
     db,
     runtime: {
       primary: options.provider ?? new LocalRuleProvider(),

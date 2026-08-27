@@ -1,6 +1,6 @@
 # Testing
 
-158 tests. What they cover, why they are written the way they are, and what to
+194 tests. What they cover, why they are written the way they are, and what to
 add when you change something.
 
 ```bash
@@ -59,6 +59,10 @@ input, check the decision.
 
 `security.test.ts` covers the keys-file parser and loader, log redaction, the
 public-message safety rule, and the secret scanner itself.
+
+`openrouter.provider.test.ts` and `gemini.provider.test.ts` verify each hosted
+adapter's HTTP translation, JSON parsing, token usage and safe failure mapping
+with injected `fetch` implementations. They never call either real service.
 
 ### Behaviour tests — `tests/behaviour/`
 
@@ -193,7 +197,7 @@ infrastructure to be verified.
 ## Before committing
 
 ```bash
-npm test              # all 158
+npm test              # all 194
 npm run typecheck --workspace backend
 npm run keys:check    # the pre-commit hook runs this too
 ```

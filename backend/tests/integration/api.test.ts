@@ -15,7 +15,7 @@ import {
   truncateAll,
   type TestApp,
 } from '../helpers/test-app.js';
-import { analyses, conversations, entities, followUps, items, segments } from '../../src/db/schema.js';
+import { analyses, conversations, entities, followUps, items, segments, aiInvocations } from '../../src/db/schema.js';
 import type { Database } from '../../src/db/client.js';
 
 let harness: TestApp;
@@ -69,6 +69,77 @@ describe('POST /api/v1/conversations/analyze', () => {
     expect(Array.isArray(body.analysis.items)).toBe(true);
     expect(body.analysis).toHaveProperty('follow_up');
     expect(body.meta).toMatchObject({ provider: 'local', persisted: true, degraded: false });
+    expect(body.meta.usage.source).toBe('estimated');
+    expect(body.meta.usage.total_tokens).toBeGreaterThan(0);
+    expect(body.meta.usage.prompt_tokens).toBeGreaterThan(0);
+    expect(body.meta.ai_exchange).toBeUndefined();
+  });
+
+  it('returns provider request and response bodies only when the trace is enabled', async () => {
+    const { MockProvider } = await import('../../src/ai/mock.provider.js');
+    const traced = await buildTestApp({
+      db,
+      exposeAiTrace: true,
+      provider: new MockProvider([
+        {
+          kind: 'respond',
+          payload: { intent: 'LOG', entities: [], items: [] },
+          exchange: {
+            request: { systemInstruction: { parts: [{ text: 'return json' }] } },
+            response: { candidates: [{ content: { parts: [{ text: '{"intent":"LOG"}' }] } }] },
+          },
+        },
+      ]),
+    });
+
+    try {
+      const { status, body } = await analyze(traced.app, { text: 'I met Arun yesterday.' });
+      expect(status).toBe(200);
+      expect(body.meta.ai_exchange).toMatchObject({
+        provider: 'mock',
+        model: 'mock-model',
+        request: { systemInstruction: { parts: [{ text: 'return json' }] } },
+      });
+      expect(JSON.stringify(body.meta.ai_exchange)).not.toContain('apiKey');
+    } finally {
+      await traced.close();
+    }
+  });
+
+  it('returns host-reported token counts when the provider supplies them', async () => {
+    const { MockProvider } = await import('../../src/ai/mock.provider.js');
+    const app = await buildTestApp({
+      db,
+      provider: new MockProvider([
+        {
+          kind: 'respond',
+          payload: { intent: 'LOG', entities: [], items: [] },
+          usage: {
+            promptTokens: 320,
+            completionTokens: 55,
+            totalTokens: 375,
+            source: 'provider',
+          },
+        },
+      ]),
+    });
+
+    try {
+      const { status, body } = await analyze(app.app, { text: 'I met Arun yesterday.' });
+      expect(status).toBe(200);
+      expect(body.meta.usage).toEqual({
+        prompt_tokens: 320,
+        completion_tokens: 55,
+        total_tokens: 375,
+        source: 'provider',
+      });
+
+      const [row] = await db.select().from(aiInvocations);
+      expect(row?.promptTokens).toBe(320);
+      expect(row?.completionTokens).toBe(55);
+    } finally {
+      await app.close();
+    }
   });
 
   it('stores the original conversation verbatim', async () => {

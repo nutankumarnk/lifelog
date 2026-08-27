@@ -3,7 +3,7 @@
 **The live state of the work.** Keep this file current — it is the first thing
 the next agent reads, and the only thing that tells them where to start.
 
-**Last updated:** 2026-08-19 · **Current phase:** Phase 1 · **Status:** Complete
+**Last updated:** 2026-08-27 · **Current phase:** Phase 1 · **Status:** Complete
 
 ---
 
@@ -31,6 +31,7 @@ the next agent reads, and the only thing that tells them where to start.
 
 - [x] `AiProvider` interface and `AiProviderError` taxonomy
 - [x] OpenRouter provider (Gemma by default)
+- [x] Direct Gemini provider (active locally; no offline fallback)
 - [x] Local rule-engine provider — works with no key and no network
 - [x] Mock provider for deterministic tests
 - [x] Registry: selection, retries with backoff, failover, degradation reporting
@@ -73,7 +74,7 @@ the next agent reads, and the only thing that tells them where to start.
 - [x] Pre-commit hook installer
 - [x] `docs/security-checklist.md`
 
-### Tests — 158 passing
+### Tests — full suite passing
 
 - [x] Unit: intelligence modules
 - [x] Unit: security utilities and the scanner itself
@@ -84,6 +85,7 @@ the next agent reads, and the only thing that tells them where to start.
 ### Test frontend
 
 - [x] React + Vite console on port 5319
+- [x] Development-only AI provider request/response inspector
 - [x] Input, loading, error and empty states
 - [x] Entities, all item types, follow-up, missing information, warnings, raw JSON
 - [x] API-only: no key, no model logic, no database access
@@ -108,7 +110,7 @@ the next agent reads, and the only thing that tells them where to start.
 | PostgreSQL works locally | ✅ | `npm run db:up && npm run db:migrate` |
 | Fastify works | ✅ | Backend on :4319 |
 | Health endpoint works | ✅ | `GET /health`, integration tests |
-| AI provider abstraction works | ✅ | Three implementations behind one interface |
+| AI provider abstraction works | ✅ | Four implementations behind one interface |
 | OpenRouter provider works | ✅ | Adapter + error mapping; exercised via the mock in tests |
 | Gemma can analyse a conversation | ✅ | Default model; the prompt is model-agnostic |
 | Structured output is validated | ✅ | Strict `AnalysisSchema` at the end of the pipeline |

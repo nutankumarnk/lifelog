@@ -77,7 +77,7 @@ each one means.
 | `FEELING` | IMPLEMENTED | With emotion word, sentiment and intensity |
 | Behavior stance | IMPLEMENTED | First-hand message stance (`VENT`/`PLAN`/…), not a clinical profile |
 | Inferred emotional impact | IMPLEMENTED | Separate from FEELING; always `inferred: true` with basis spans |
-| Algorithm draft + AI teacher | IMPLEMENTED | Local draft first; Gemma fills gaps; code reconciles |
+| Algorithm draft + AI teacher | IMPLEMENTED | Optional local comparison draft; hosted extraction; code reconciles |
 | Pattern-weight relearn | IMPLEMENTED | Runtime weights + lexicon proposals; never auto-edits source |
 | One sentence → several items | IMPLEMENTED | "I met Arun yesterday and I need to send him the file" yields a past event, a memory and a task |
 | Task/reminder distinction enforced in code | IMPLEMENTED | A model-labelled reminder with no request wording is demoted to a task, and vice versa. Recorded as a warning. |
@@ -144,13 +144,16 @@ each one means.
 
 | Capability | Status | Notes |
 | --- | --- | --- |
-| Provider abstraction | IMPLEMENTED | Three implementations behind one interface |
-| OpenRouter provider | IMPLEMENTED | Default model `google/gemma-4-26b-a4b-it:free` |
+| Provider abstraction | IMPLEMENTED | Four implementations behind one interface |
+| Gemini provider | IMPLEMENTED | Active direct model `gemini-flash-latest`; no offline fallback in Gemini mode |
+| OpenRouter provider | IMPLEMENTED | Retained model `google/gemma-4-26b-a4b-it:free` |
 | Offline rule engine | IMPLEMENTED | Lifelog works with no key and no network |
 | Mock provider | IMPLEMENTED | Test-only; scriptable failures |
 | Retry with backoff | IMPLEMENTED | Retryable errors only, 250ms → 500ms → 1s |
-| Failover and degradation reporting | IMPLEMENTED | `meta.degraded` plus a warning naming the failed provider |
+| Failover and degradation reporting | IMPLEMENTED | OpenRouter/auto can degrade locally; explicit Gemini surfaces provider errors |
 | Recover malformed JSON | IMPLEMENTED | Markdown fences, trailing commas, prose wrappers, token-limit truncation |
+| Token usage per request | IMPLEMENTED | `meta.usage` on analyze; logged; stored on `ai_invocations`. Host-reported when available, otherwise estimated |
+| Provider exchange inspector | IMPLEMENTED | Development-only request/response JSON in the console; keys excluded; never logged or persisted |
 | Streaming responses | NOT IMPLEMENTED | Analysis is a single request/response. |
 | Response caching | NOT IMPLEMENTED | No requirement yet. |
 
@@ -180,7 +183,8 @@ each one means.
 ## Test console
 
 The React app in `frontend/` is a testing tool, not the product UI. It accepts
-text, shows a loading state, renders entities, every item type grouped, the
-follow-up question, missing information, warnings and raw JSON. It talks to the
-backend API and nothing else — no key, no model, no database. It will be
-replaced entirely.
+text, shows a loading state, renders entities, every item type grouped, token
+usage for the request, the development-only provider exchange, the follow-up
+question, missing information, warnings and raw JSON. It talks to the backend
+API and nothing else — no key, no model, no database. It will be replaced
+entirely.

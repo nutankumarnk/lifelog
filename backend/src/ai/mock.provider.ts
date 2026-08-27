@@ -8,11 +8,12 @@
  *
  * Never registered outside NODE_ENV=test unless AI_PROVIDER=mock is set explicitly.
  */
-import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult } from './provider.js';
+import { AiProviderError, type AiProvider, type AnalysisRequest, type ProviderResult, type ProviderUsage } from './provider.js';
+import { estimateUsage } from './usage.js';
 
 export type MockBehaviour =
-  | { kind: 'respond'; payload: unknown; rawText?: string; delayMs?: number }
-  | { kind: 'respondText'; text: string; delayMs?: number }
+  | { kind: 'respond'; payload: unknown; rawText?: string; delayMs?: number; usage?: ProviderUsage; exchange?: ProviderResult['exchange'] }
+  | { kind: 'respondText'; text: string; delayMs?: number; usage?: ProviderUsage; exchange?: ProviderResult['exchange'] }
   | { kind: 'fail'; error: AiProviderError; delayMs?: number };
 
 export class MockProvider implements AiProvider {
@@ -69,13 +70,25 @@ export class MockProvider implements AiProvider {
       if (!parsed.ok) {
         throw new AiProviderError('BAD_OUTPUT', this.name, `model did not return JSON: ${parsed.error}`);
       }
-      return { raw: parsed.value, rawText: behaviour.text, latencyMs: behaviour.delayMs ?? 0 };
+      return {
+        raw: parsed.value,
+        rawText: behaviour.text,
+        latencyMs: behaviour.delayMs ?? 0,
+        usage:
+          behaviour.usage ??
+          estimateUsage(`${request.instructions}\n${request.userMessage}`, behaviour.text),
+        exchange: behaviour.exchange,
+      };
     }
 
+    const rawText = behaviour.rawText ?? JSON.stringify(behaviour.payload);
     return {
       raw: behaviour.payload,
-      rawText: behaviour.rawText ?? JSON.stringify(behaviour.payload),
+      rawText,
       latencyMs: behaviour.delayMs ?? 0,
+      usage:
+        behaviour.usage ?? estimateUsage(`${request.instructions}\n${request.userMessage}`, rawText),
+      exchange: behaviour.exchange,
     };
   }
 }

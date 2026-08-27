@@ -48,9 +48,9 @@ npm run dev                 # backend on :4319, test console on :5319
 
 Open <http://localhost:5319>.
 
-**Lifelog runs with no API key.** Without one it uses its own offline rule
-engine, which is weaker at paraphrase and unusual phrasing but fully functional.
-To use a hosted model, put your key in `secrets/API-KEYS.md` — see
+**Lifelog can run with no API key.** The `local` provider is weaker at
+paraphrase and unusual phrasing but fully functional. To use Gemini or
+OpenRouter, put the matching key in `secrets/API-KEYS.md` — see
 [`secrets/API-KEYS.example.md`](secrets/API-KEYS.example.md).
 
 ### Running the pieces separately
@@ -58,7 +58,7 @@ To use a hosted model, put your key in `secrets/API-KEYS.md` — see
 ```bash
 npm run dev:backend         # Fastify API on http://localhost:4319
 npm run dev:frontend        # Vite test console on http://localhost:5319
-npm test                    # 158 tests
+npm test                    # 194 tests
 npm run keys:check          # scan the repository for exposed credentials
 ```
 
@@ -99,12 +99,15 @@ Copy `.env.example` to `.env`. **Secrets do not belong in `.env`** — they go i
 | `PORT` | `4319` | Backend HTTP port |
 | `DATABASE_URL` | — | PostgreSQL connection string (required) |
 | `TEST_DATABASE_URL` | — | Separate database for the test suite |
-| `AI_PROVIDER` | `auto` | `auto`, `openrouter`, `local` or `mock` |
+| `AI_PROVIDER` | `auto` | `auto`, `gemini`, `openrouter`, `local` or `mock` |
 | `AI_MODEL` | `google/gemma-4-26b-a4b-it:free` | Model identifier passed to OpenRouter |
+| `GEMINI_MODEL` | `gemini-flash-latest` | Model identifier passed directly to Gemini |
 | `CORS_ORIGINS` | `http://localhost:5319` | Browser origins allowed to call the API |
 | `MAX_INPUT_CHARS` | `20000` | Longest message accepted |
 | `LOG_LEVEL` | `info` | Log verbosity |
 | `OPENROUTER_API_KEY` | — | **Put this in `secrets/API-KEYS.md`, not here** |
+| `GEMINI_API_KEY` | — | **Put this in `secrets/API-KEYS.md`, not here** |
+| `EXPOSE_AI_TRACE` | `false` | Development-only provider request/response inspector |
 
 Full list with descriptions: [`.env.example`](.env.example).
 
@@ -124,7 +127,7 @@ lifelog/
 │   │   ├── controllers/  HTTP shaping
 │   │   ├── routes/       Path declarations
 │   │   └── db/           Drizzle schema, client, migrations
-│   └── tests/            158 tests: unit, behaviour, integration
+│   └── tests/            194 tests: unit, behaviour, integration
 ├── frontend/             Temporary React test console
 ├── docs/                 The documentation system (read this)
 ├── agents/               Instructions for AI coding agents

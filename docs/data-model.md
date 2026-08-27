@@ -233,7 +233,7 @@ One row per model call. Observability only; nothing reads it at runtime.
 | `status` | varchar(16) | no | `ok` / `error` |
 | `attempt` | integer | no | Which retry this was |
 | `latency_ms` | integer | no | |
-| `prompt_tokens` / `completion_tokens` | integer | yes | When the provider reports them |
+| `prompt_tokens` / `completion_tokens` | integer | yes | Host-reported when available; estimated (~4 chars/token) for the offline engine |
 | `error_code` | varchar(64) | yes | **Error class only. Never the prompt, never the key, never the response.** |
 | `created_at` | timestamptz | no | |
 

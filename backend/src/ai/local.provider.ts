@@ -21,6 +21,7 @@
  * their own, so no cycle is created.
  */
 import type { AiProvider, AnalysisRequest, ProviderResult } from './provider.js';
+import { estimateUsage } from './usage.js';
 import { segmentConversation } from '../intelligence/segment.js';
 import {
   findTemporalPhrases,
@@ -400,23 +401,29 @@ export class LocalRuleProvider implements AiProvider {
       intentConfidence = 0.3;
     }
 
+    const raw = {
+      intent,
+      intent_confidence: intentConfidence,
+      summary: titleFrom(text, 25),
+      entities: entities.map((entity) => ({
+        id: entity.id,
+        kind: entity.kind,
+        name: entity.name,
+        relation: entity.relation,
+        mentions: entity.mentions,
+        confidence: entity.confidence,
+      })),
+      items,
+    };
+
     return {
-      raw: {
-        intent,
-        intent_confidence: intentConfidence,
-        summary: titleFrom(text, 25),
-        entities: entities.map((entity) => ({
-          id: entity.id,
-          kind: entity.kind,
-          name: entity.name,
-          relation: entity.relation,
-          mentions: entity.mentions,
-          confidence: entity.confidence,
-        })),
-        items,
-      },
+      raw,
       rawText: '',
       latencyMs: Date.now() - startedAt,
+      usage: estimateUsage(
+        `${request.instructions}\n${request.userMessage}`,
+        JSON.stringify(raw),
+      ),
     };
   }
 }

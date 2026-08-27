@@ -149,7 +149,7 @@ What *is* enforced, and matters regardless of scale:
 What leaves the machine, when a hosted provider is configured:
 
 ```
-conversation text + reference time + timezone  →  OpenRouter  →  model
+conversation text + current date/time + timezone  →  Gemini or OpenRouter  →  model
 ```
 
 That is all. No user id (there isn't one), no history, no device information, no

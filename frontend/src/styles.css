@@ -334,6 +334,50 @@ button:focus-visible {
   font-family: ui-monospace, Menlo, monospace;
 }
 
+.usage {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 14px 0 0;
+  padding: 10px 14px;
+  background: var(--accent-soft);
+  border: 1px solid #6ea8fe40;
+  border-radius: var(--radius-sm);
+}
+
+.usage .label {
+  margin: 0;
+}
+
+.usage strong {
+  font-variant-numeric: tabular-nums;
+  font-size: 1.15em;
+  letter-spacing: -0.02em;
+}
+
+.usage__parts {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.usage__source {
+  margin-left: auto;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.usage__source--provider {
+  color: var(--good);
+}
+
+.usage__source--estimated {
+  color: var(--warn);
+}
+
 .notice {
   margin: 16px 0 0;
   padding: 10px 14px;
@@ -352,6 +396,72 @@ button:focus-visible {
   background: #34d3990f;
   border-color: #34d39940;
   color: #6ee7b7;
+}
+
+.exchange {
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.exchange__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.exchange__head .group__title,
+.exchange__head p {
+  margin-bottom: 0;
+}
+
+.exchange__provider {
+  flex: none;
+  font: 11px ui-monospace, Menlo, monospace;
+  color: var(--accent);
+}
+
+.exchange__grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+}
+
+.exchange__part {
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.exchange__part summary {
+  padding: 8px 12px;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--border);
+}
+
+.exchange__part:not([open]) summary {
+  border-bottom: 0;
+}
+
+.exchange__part .json {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  max-height: 480px;
+}
+
+@media (max-width: 1100px) {
+  .exchange__grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 .followup {
