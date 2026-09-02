@@ -477,6 +477,37 @@ role-gated diagnostics before any production debugging surface is introduced.
 
 ---
 
+## D-017 — User-initiated note deletion
+
+**Date:** 2026-09-02 · **Status:** Accepted
+
+**Problem.** Journal users need to remove an entry they no longer want to keep,
+but a note is the source conversation and owns several derived records.
+
+**Options considered.** Hide the note in the client; soft-delete it with a new
+schema field; permanently delete the conversation and rely on the existing
+foreign-key ownership model.
+
+**Chosen:** expose `DELETE /api/v1/notes/:id`. The client asks for explicit
+confirmation, then permanently deletes the conversation. Existing cascades
+remove analyses and conversation-specific derived records. Cross-conversation
+task and memory records are retained when they have other provenance.
+
+**Why.** Hiding leaves sensitive content stored and searchable. Soft deletion
+would require every current and future read path to enforce the same filter and
+does not satisfy a user's expectation that deletion removes their entry. The
+schema already expresses ownership through cascading foreign keys.
+
+**Trade-offs.** Deletion cannot be undone and the original conversation can no
+longer be used for re-analysis. Phase 1 has no authentication, so this endpoint
+must remain local-only with the rest of the API.
+
+**Future impact.** Authentication and authorization must protect this endpoint
+before deployment. A future recovery window would require an explicit retention
+policy and a schema change rather than silently weakening deletion.
+
+---
+
 ## Template for new entries
 
 ```

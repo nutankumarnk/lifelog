@@ -25,6 +25,7 @@ import {
   type Entity,
   type Intent,
   type Item,
+  type JournalEntry,
   type Warning,
 } from '../schemas/analysis.schema.js';
 import {
@@ -45,6 +46,7 @@ import {
   coerceIntent,
   normalizeEntities,
   normalizeItems,
+  normalizeJournal,
   normalizeMissingInformation,
 } from './normalize.js';
 import { buildInstructions, buildUserMessage } from './prompt.js';
@@ -96,6 +98,7 @@ interface ProcessedDraft {
   intentConfidence: number;
   languageHint: string | undefined;
   summary: string;
+  journal: JournalEntry;
   entities: Entity[];
   items: Item[];
   missingRaw: unknown;
@@ -174,14 +177,19 @@ function processRawExtraction(
     intent = items.some((item) => item.type === 'TASK') ? 'CAPTURE_TASK' : 'LOG';
   }
 
+  const summary =
+    typeof raw.summary === 'string' && raw.summary.trim()
+      ? raw.summary.trim()
+      : fallbackSummary(text);
+
+  const journal = normalizeJournal(raw.journal, summary, text);
+
   return {
     intent,
     intentConfidence: typeof raw.intent_confidence === 'number' ? raw.intent_confidence : 0.5,
     languageHint: typeof raw.language === 'string' ? raw.language : undefined,
-    summary:
-      typeof raw.summary === 'string' && raw.summary.trim()
-        ? raw.summary.trim()
-        : fallbackSummary(text),
+    summary,
+    journal,
     entities: grounded.entities,
     items,
     missingRaw: raw.missing_information,
@@ -222,6 +230,7 @@ function assembleCandidate(
       stance_confidence: stance.confidence,
       language: detectLanguage(text, draft.languageHint),
       summary: draft.summary,
+      journal: draft.journal,
       segments,
       entities: draft.entities,
       items: draft.items,

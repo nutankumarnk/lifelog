@@ -60,18 +60,22 @@ Neither choice is load-bearing. Both have decision entries in
 
 ## What the model is asked to do
 
-One call per conversation. It receives system instructions
-(`intelligence/prompt.ts`) and a user message. **Both open with the current
-date and time in the user's timezone**, because a model has no clock of its
-own — without that, "yesterday" and "next Monday" are unanchored. The calendar
-conversion is still done in `intelligence/temporal.ts`; the model is only told
-what "now" is so it can judge tense.
+One call per conversation. It receives compact, token-dense system instructions
+(`intelligence/prompt.ts`) and a clean quoted user message. The system prompt opens
+with the current date and time in the user's timezone (`NOW: ...`), because a model has no
+clock of its own — without that, "yesterday" and "next Monday" are unanchored. The calendar
+conversion is still done in `intelligence/temporal.ts`; the model is only told what "now" is
+so it can judge tense.
+
+For full token benchmarks and multi-item extraction principles, see [`prompt-optimization.md`](prompt-optimization.md).
 
 It is asked for the things a model genuinely does better than code:
 
 - what the message means, and which spans carry which facts
+- separate item extraction for compound sentences containing events, tasks, and reminders
 - which entities are mentioned, and how they relate to the user
 - a first-pass type for each item, and a first-pass intent
+- a polished first-person journal narrative (`journal.polished_entry`) without brackets or tags
 - the *phrase* the user used for a time — never the date
 - an opinion on what is missing
 

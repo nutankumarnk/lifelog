@@ -54,11 +54,14 @@ export const conversations = pgTable(
     timezone: varchar('timezone', { length: 64 }),
     source: varchar('source', { length: 32 }).notNull().default('api'),
     clientMeta: jsonb('client_meta').$type<Record<string, unknown>>().notNull().default({}),
+    processingStatus: varchar('processing_status', { length: 32 }).notNull().default('pending'),
     createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [
     index('conversations_created_at_idx').on(table.createdAt),
     index('conversations_user_created_idx').on(table.userId, table.createdAt),
+    index('conversations_processing_status_idx').on(table.processingStatus),
   ],
 );
 
@@ -454,8 +457,92 @@ export const itemEntitiesRelations = relations(itemEntities, ({ one }) => ({
   entity: one(entities, { fields: [itemEntities.entityId], references: [entities.id] }),
 }));
 
+// ---------------------------------------------------------------------------
+// Memory Graph — memory_objects, object_origins, object_relationships
+// ---------------------------------------------------------------------------
+
+export const memoryObjects = pgTable(
+  'memory_objects',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id'),
+    type: varchar('type', { length: 64 }).notNull(),
+    name: text('name').notNull(),
+    normalizedName: text('normalized_name').notNull(),
+    attributes: jsonb('attributes').$type<Record<string, unknown>>().notNull().default({}),
+    firstSeenAt: timestamp('first_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true }).notNull().defaultNow(),
+    mentionCount: integer('mention_count').notNull().default(1),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('memory_objects_user_type_name_uidx').on(table.userId, table.type, table.normalizedName),
+    index('memory_objects_type_idx').on(table.type),
+    index('memory_objects_normalized_name_idx').on(table.normalizedName),
+    index('memory_objects_user_idx').on(table.userId),
+  ],
+);
+
+export const objectOrigins = pgTable(
+  'object_origins',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    objectId: uuid('object_id')
+      .notNull()
+      .references(() => memoryObjects.id, { onDelete: 'cascade' }),
+    conversationId: uuid('conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    analysisId: uuid('analysis_id').references(() => analyses.id, { onDelete: 'set null' }),
+    sourceEntityId: uuid('source_entity_id').references(() => entities.id, { onDelete: 'set null' }),
+    sourceItemId: uuid('source_item_id').references(() => items.id, { onDelete: 'set null' }),
+    originType: varchar('origin_type', { length: 32 }).notNull().default('extracted'),
+    confidence: doublePrecision('confidence').notNull().default(0.5),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    uniqueIndex('object_origins_object_conversation_uidx').on(table.objectId, table.conversationId),
+    index('object_origins_object_idx').on(table.objectId),
+    index('object_origins_conversation_idx').on(table.conversationId),
+  ],
+);
+
+export const objectRelationships = pgTable(
+  'object_relationships',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id'),
+    sourceObjectId: uuid('source_object_id')
+      .notNull()
+      .references(() => memoryObjects.id, { onDelete: 'cascade' }),
+    targetObjectId: uuid('target_object_id')
+      .notNull()
+      .references(() => memoryObjects.id, { onDelete: 'cascade' }),
+    relationshipType: varchar('relationship_type', { length: 64 }).notNull(),
+    confidence: doublePrecision('confidence').notNull().default(0.5),
+    sourceConversationId: uuid('source_conversation_id')
+      .notNull()
+      .references(() => conversations.id, { onDelete: 'cascade' }),
+    attributes: jsonb('attributes').$type<Record<string, unknown>>().notNull().default({}),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex('object_relationships_src_tgt_type_uidx').on(
+      table.sourceObjectId,
+      table.targetObjectId,
+      table.relationshipType,
+    ),
+    index('object_relationships_source_idx').on(table.sourceObjectId),
+    index('object_relationships_target_idx').on(table.targetObjectId),
+    index('object_relationships_conversation_idx').on(table.sourceConversationId),
+  ],
+);
+
 /** Truncates every table. Test-support only; never call from application code. */
 export const TRUNCATE_ALL = sql`TRUNCATE TABLE
+  object_relationships, object_origins, memory_objects,
   action_item_links, action_item_sources, action_items,
   item_entities, items, entities, segments, follow_ups, ai_invocations, disagreements, pattern_weights, analyses, conversations
   RESTART IDENTITY CASCADE`;

@@ -128,6 +128,12 @@ the next agent reads, and the only thing that tells them where to start.
 
 **Phase 1 is complete.**
 
+## Post-Phase 1 additions
+
+- [x] Journal notes can be permanently deleted through
+      `DELETE /api/v1/notes/:id`, with confirmation in the diary UI and
+      integration coverage for success and not-found behavior.
+
 ---
 
 ## Next up — Phase 2 (not started)

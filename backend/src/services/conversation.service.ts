@@ -22,8 +22,17 @@ import { understandConversation } from '../intelligence/pipeline.js';
 import type { ActionItemRepository } from '../repositories/action-item.repository.js';
 import type { AnalysisRepository } from '../repositories/analysis.repository.js';
 import type { ConversationRepository } from '../repositories/conversation.repository.js';
+import type { MemoryService } from './memory.service.js';
 import type { Analysis } from '../schemas/analysis.schema.js';
-import type { AnalyzeRequest } from '../schemas/api.schema.js';
+import type {
+  AnalyzeRequest,
+  ExtractedObject,
+  NoteDetail,
+  NoteListQuery,
+  NoteListResponse,
+  Relationship,
+  UpdateNoteRequest,
+} from '../schemas/api.schema.js';
 
 export interface AnalyzeResult {
   conversationId: string;
@@ -43,6 +52,8 @@ export interface ConversationServiceDeps {
   analyses: AnalysisRepository;
   /** Optional: when present, tasks and reminders are de-duplicated and tracked. */
   actionItems?: ActionItemRepository;
+  /** Optional: when present, memory graph objects and relationships are built. */
+  memoryService?: MemoryService;
   runtime: AiRuntimeOptions;
   /** Injected so tests can pin "now" instead of depending on the wall clock. */
   clock?: () => Date;
@@ -86,6 +97,8 @@ export class ConversationService {
     const now = request.occurred_at ? new Date(request.occurred_at) : this.clock();
     const timezone = request.timezone ?? null;
 
+    const source = request.source ?? (request.client as any)?.source ?? 'api';
+
     // --- 1. Preserve the conversation --------------------------------------
     // A failure here is fatal: Lifelog will not analyse text it cannot keep,
     // because an analysis with nothing to point back at is unverifiable.
@@ -95,7 +108,7 @@ export class ConversationService {
         rawText: request.text,
         occurredAt: now,
         timezone,
-        source: 'api',
+        source,
         clientMeta: request.client ?? {},
       });
       conversationId = conversation.id;
@@ -134,6 +147,7 @@ export class ConversationService {
       persisted = true;
 
       await this.deps.conversations.setLanguage(conversationId, understanding.analysis.language);
+      await this.deps.conversations.updateProcessingStatus(conversationId, 'processed');
 
       // --- 4. Track tasks and reminders ------------------------------------
       // Restating an obligation must not create a second one, so this merges on
@@ -185,6 +199,24 @@ export class ConversationService {
           }
         }
       }
+
+      // --- 5. Build memory graph objects & connections ---------------------
+      if (this.deps.memoryService) {
+        try {
+          await this.deps.memoryService.processAnalysis({
+            conversationId,
+            analysis: understanding.analysis,
+            analysisId,
+            entityIds: result.entityIds,
+            itemIds: result.itemIds,
+          });
+        } catch (error) {
+          this.deps.logger?.warn(
+            { conversationId, err: String(error) },
+            'could not process memory objects for analysis',
+          );
+        }
+      }
     } catch (error) {
       // Deliberately non-fatal. The conversation is safe and the analysis is
       // still returned; it can be recomputed and re-stored later.
@@ -226,5 +258,179 @@ export class ConversationService {
       usage: understanding.usage,
       aiExchange: understanding.aiExchange,
     };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Notes & Journal API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Paginated note/journal listing with filtering/search, newest first.
+   */
+  async listNotes(filters: NoteListQuery): Promise<NoteListResponse> {
+    const [noteRows, total] = await Promise.all([
+      this.deps.conversations.list(filters),
+      this.deps.conversations.count({
+        from: filters.from,
+        to: filters.to,
+        source: filters.source,
+        search: filters.search,
+      }),
+    ]);
+
+    // For each note, look up its latest analysis to include the journal if available
+    const notesWithJournal = await Promise.all(
+      noteRows.map(async (row) => {
+        const latestAnalysis = await this.deps.conversations.findLatestAnalysis(row.id);
+        const analysisData = latestAnalysis?.analysis as Record<string, unknown> | undefined;
+        const journal = analysisData?.journal as Record<string, unknown> | undefined;
+
+        return {
+          id: row.id,
+          original_text: row.originalText,
+          created_at: row.createdAt.toISOString(),
+          updated_at: row.updatedAt.toISOString(),
+          occurred_at: row.occurredAt ? row.occurredAt.toISOString() : row.createdAt.toISOString(),
+          timezone: row.timezone,
+          language: row.language,
+          source: row.source,
+          processing_status: row.processingStatus,
+          journal: journal
+            ? {
+                title: String(journal.title || 'Personal Journal Entry'),
+                polished_entry: String(journal.polished_entry || row.originalText),
+                mood: String(journal.mood || 'Neutral'),
+                highlights: Array.isArray(journal.highlights)
+                  ? journal.highlights.map(String)
+                  : [],
+              }
+            : {
+                title: String(analysisData?.summary || 'Journal Entry'),
+                polished_entry: row.originalText,
+                mood: 'Neutral',
+                highlights: analysisData?.summary ? [String(analysisData.summary)] : [],
+              },
+        };
+      }),
+    );
+
+    return {
+      notes: notesWithJournal,
+      pagination: {
+        page: filters.page,
+        limit: filters.limit,
+        total,
+        total_pages: Math.max(1, Math.ceil(total / filters.limit)),
+      },
+    };
+  }
+
+  /**
+   * Fetch a single note with its extracted objects, relationships, and journal.
+   */
+  async getNote(id: string): Promise<NoteDetail | null> {
+    const note = await this.deps.conversations.findNoteById(id);
+    if (!note) return null;
+
+    const latestAnalysis = await this.deps.conversations.findLatestAnalysis(id);
+    const objects: ExtractedObject[] = [];
+    const relationships: Relationship[] = [];
+    const analysisData = latestAnalysis?.analysis as Record<string, unknown> | undefined;
+    const journal = analysisData?.journal as Record<string, unknown> | undefined;
+
+    if (latestAnalysis?.id) {
+      const analysisId = latestAnalysis.id;
+      const [entityRows, itemRows] = await Promise.all([
+        this.deps.conversations.findEntitiesByAnalysis(analysisId),
+        this.deps.conversations.findItemsByAnalysis(analysisId),
+      ]);
+
+      const entityNameById = new Map(entityRows.map((e) => [e.id, e.name]));
+
+      for (const entity of entityRows) {
+        objects.push({
+          id: entity.id,
+          type: 'entity',
+          name: entity.name,
+          kind: entity.kind,
+          confidence: entity.confidence,
+        });
+      }
+
+      for (const item of itemRows) {
+        objects.push({
+          id: item.id,
+          type: item.type,
+          name: item.title,
+          summary: item.summary || undefined,
+          source_text: item.sourceText || undefined,
+          confidence: item.confidence,
+          details:
+            item.details && typeof item.details === 'object' && Object.keys(item.details).length > 0
+              ? (item.details as Record<string, unknown>)
+              : undefined,
+        });
+      }
+
+      const itemIds = itemRows.map((i) => i.id);
+      if (itemIds.length > 0) {
+        const links = await this.deps.conversations.findItemEntityLinks(itemIds);
+        const itemNameById = new Map(itemRows.map((i) => [i.id, i.title]));
+        for (const link of links) {
+          const itemName = itemNameById.get(link.itemId) ?? link.itemId;
+          const entityName = entityNameById.get(link.entityId) ?? link.entityId;
+          relationships.push({
+            source_object: entityName,
+            target_object: itemName,
+            relationship_type: link.role,
+          });
+        }
+      }
+    }
+
+    return {
+      id: note.id,
+      original_text: note.originalText,
+      created_at: note.createdAt.toISOString(),
+      updated_at: note.updatedAt.toISOString(),
+      occurred_at: note.occurredAt ? note.occurredAt.toISOString() : note.createdAt.toISOString(),
+      timezone: note.timezone,
+      language: note.language,
+      source: note.source,
+      processing_status: note.processingStatus,
+      journal: journal
+        ? {
+            title: String(journal.title || 'Personal Journal Entry'),
+            polished_entry: String(journal.polished_entry || note.originalText),
+            mood: String(journal.mood || 'Neutral'),
+            highlights: Array.isArray(journal.highlights)
+              ? journal.highlights.map(String)
+              : [],
+          }
+        : {
+            title: String(analysisData?.summary || 'Journal Entry'),
+            polished_entry: note.originalText,
+            mood: 'Neutral',
+            highlights: analysisData?.summary ? [String(analysisData.summary)] : [],
+          },
+      objects,
+      relationships,
+    };
+  }
+
+  /**
+   * Update a note's journal entry or original text.
+   */
+  async updateNote(id: string, updates: UpdateNoteRequest): Promise<NoteDetail | null> {
+    const existing = await this.deps.conversations.findNoteById(id);
+    if (!existing) return null;
+
+    await this.deps.conversations.updateNoteJournal(id, updates);
+    return this.getNote(id);
+  }
+
+  /** Delete a note and all records owned exclusively by its conversation. */
+  async deleteNote(id: string): Promise<boolean> {
+    return this.deps.conversations.delete(id);
   }
 }

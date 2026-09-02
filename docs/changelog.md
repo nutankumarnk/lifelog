@@ -8,6 +8,18 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-09-02 — 1.1.6
+
+### Added
+
+**Journal entry deletion.** Each diary card now offers a confirmed delete action.
+`DELETE /api/v1/notes/:id` permanently deletes the source conversation and its
+conversation-owned derived records through the existing foreign-key cascades.
+The API returns `204` on success and `404` for an unknown note.
+
+*Why:* users need control over journal entries they no longer want retained.
+([D-017](decision.md))
+
 ## 2026-08-27 — 1.1.5
 
 ### Added

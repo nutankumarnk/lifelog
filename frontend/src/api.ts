@@ -12,6 +12,12 @@ import type {
   AnalyzeResponse,
   ApiError,
   HealthResponse,
+  MemoryGraphData,
+  MemoryObject,
+  MemoryObjectDetail,
+  NoteDetail,
+  NoteListResponse,
+  NotePagination,
 } from './types';
 
 /** Vite proxies these paths to the backend. See vite.config.ts. */
@@ -132,5 +138,88 @@ export async function updateTaskStatus(
     signal,
   });
 
+  if (!response.ok) await parseError(response);
+}
+export async function fetchNotes(
+  query?: { page?: number; limit?: number; search?: string; from?: string; to?: string },
+  signal?: AbortSignal,
+): Promise<NoteListResponse> {
+  const params = new URLSearchParams();
+  if (query?.page) params.set('page', String(query.page));
+  if (query?.limit) params.set('limit', String(query.limit));
+  if (query?.search) params.set('search', query.search);
+  if (query?.from) params.set('from', query.from);
+  if (query?.to) params.set('to', query.to);
+
+  const qs = params.toString();
+  const url = `${BASE}/api/v1/notes${qs ? `?${qs}` : ''}`;
+  const response = await fetch(url, { signal });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as NoteListResponse;
+}
+
+export async function fetchNoteDetail(id: string, signal?: AbortSignal): Promise<NoteDetail> {
+  const response = await fetch(`${BASE}/api/v1/notes/${id}`, { signal });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as NoteDetail;
+}
+
+export async function fetchMemoryObjects(
+  query?: { type?: string; search?: string; page?: number; limit?: number },
+  signal?: AbortSignal,
+): Promise<{ objects: MemoryObject[]; pagination: NotePagination }> {
+  const params = new URLSearchParams();
+  if (query?.type) params.set('type', query.type);
+  if (query?.search) params.set('search', query.search);
+  if (query?.page) params.set('page', String(query.page));
+  if (query?.limit) params.set('limit', String(query.limit));
+  const qs = params.toString();
+  const res = await fetch(`${BASE}/api/v1/memory/objects${qs ? `?${qs}` : ''}`, { signal });
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as { objects: MemoryObject[]; pagination: NotePagination };
+}
+
+export async function fetchMemoryObjectDetail(id: string, signal?: AbortSignal): Promise<MemoryObjectDetail> {
+  const res = await fetch(`${BASE}/api/v1/memory/objects/${id}`, { signal });
+  if (!res.ok) await parseError(res);
+  return (await res.json()) as MemoryObjectDetail;
+}
+
+export async function fetchGraphData(signal?: AbortSignal): Promise<MemoryGraphData> {
+  const res = await fetch(`${BASE}/api/v1/memory/objects?limit=100`, { signal });
+  if (!res.ok) await parseError(res);
+  const data = (await res.json()) as { objects: MemoryObject[] };
+  return {
+    objects: data.objects || [],
+    edges: [],
+  };
+}
+
+export async function updateNote(
+  id: string,
+  updates: {
+    title?: string;
+    polished_entry?: string;
+    mood?: string;
+    highlights?: string[];
+    original_text?: string;
+  },
+  signal?: AbortSignal,
+): Promise<NoteDetail> {
+  const response = await fetch(`${BASE}/api/v1/notes/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(updates),
+    signal,
+  });
+  if (!response.ok) await parseError(response);
+  return (await response.json()) as NoteDetail;
+}
+
+export async function deleteNote(id: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`${BASE}/api/v1/notes/${id}`, {
+    method: 'DELETE',
+    signal,
+  });
   if (!response.ok) await parseError(response);
 }

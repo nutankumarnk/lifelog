@@ -21,7 +21,10 @@ export async function runMigrations(databaseUrl: string): Promise<void> {
   }
 }
 
-const isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].split('/').pop()!);
+const isDirectRun = Boolean(
+  process.argv[1] &&
+    fileURLToPath(import.meta.url).toLowerCase() === resolve(process.argv[1]).toLowerCase(),
+);
 
 if (isDirectRun) {
   const config = loadConfig();

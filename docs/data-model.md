@@ -46,7 +46,9 @@ same root.
 
 ## conversations
 
-The immutable record of what the user actually said.
+The immutable record of what the user actually said while the note exists. It
+is never rewritten; explicit note deletion removes the row and cascades to its
+owned interpretations and provenance records.
 
 | Column | Type | Null | Notes |
 | --- | --- | --- | --- |

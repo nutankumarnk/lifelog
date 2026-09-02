@@ -114,6 +114,7 @@ export interface Analysis {
   stance_confidence?: number;
   language: string;
   summary: string;
+  journal?: JournalEntry;
   segments: Segment[];
   entities: Entity[];
   items: Item[];
@@ -223,4 +224,134 @@ export interface HealthResponse {
     database: 'ok' | 'error' | 'skipped';
     ai_provider: 'ok' | 'degraded' | 'error';
   };
+}
+
+/** A personalized journal & diary entry generated with grammar correction and mood detection */
+export interface JournalEntry {
+  title: string;
+  polished_entry: string;
+  mood: string;
+  highlights: string[];
+}
+
+/** A single entry returned by GET /api/v1/notes */
+export interface NoteEntry {
+  id: string;
+  original_text: string;
+  created_at: string;
+  updated_at: string;
+  occurred_at?: string;
+  timezone?: string | null;
+  language?: string | null;
+  source: string;
+  processing_status: string;
+  journal?: JournalEntry;
+}
+
+/** Pagination metadata */
+export interface NotePagination {
+  page: number;
+  limit: number;
+  total: number;
+  total_pages: number;
+}
+
+/** Response shape from GET /api/v1/notes */
+export interface NoteListResponse {
+  notes: NoteEntry[];
+  pagination: NotePagination;
+}
+
+export interface ExtractedObject {
+  id: string;
+  type: string;
+  name: string;
+  kind?: string;
+  summary?: string;
+  source_text?: string;
+  confidence: number;
+  details?: Record<string, unknown>;
+}
+
+export interface NoteRelationship {
+  source_object: string;
+  target_object: string;
+  relationship_type: string;
+}
+
+export interface NoteDetail extends NoteEntry {
+  occurred_at: string;
+  timezone: string | null;
+  language: string | null;
+  objects: ExtractedObject[];
+  relationships: NoteRelationship[];
+}
+
+export interface AiTraceMessage {
+  role: string;
+  content: string;
+}
+
+export interface AiTraceAttempt {
+  provider: string;
+  model: string;
+  attempt: number;
+  status: string;
+  latency_ms: number;
+  error_kind?: string;
+  error_message?: string;
+}
+
+export interface AiTrace {
+  provider: string;
+  model: string;
+  request: {
+    kind: string;
+    messages: AiTraceMessage[];
+    [key: string]: unknown;
+  };
+  response: {
+    raw_text: string;
+    parsed?: unknown;
+    [key: string]: unknown;
+  };
+  attempts: AiTraceAttempt[];
+}
+
+export interface MemoryObject {
+  id: string;
+  type: string;
+  name: string;
+  attributes: Record<string, unknown>;
+  mention_count: number;
+  first_seen_at: string;
+  last_seen_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoryObjectRelationship {
+  id: string;
+  source_id?: string;
+  target_id?: string;
+  source_object_id?: string;
+  target_object_id?: string;
+  relationship_type: string;
+  confidence: number;
+}
+
+export interface MemoryObjectDetail extends MemoryObject {
+  relationships: MemoryObjectRelationship[];
+  origins?: Array<{
+    id: string;
+    conversation_id: string;
+    created_at: string;
+    source_text: string;
+    conversation_text: string;
+  }>;
+}
+
+export interface MemoryGraphData {
+  objects: MemoryObject[];
+  edges: Array<{ source: string; target: string; label: string }>;
 }

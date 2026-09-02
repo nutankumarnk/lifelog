@@ -199,6 +199,24 @@ export class AnalysisRepository {
     return (row?.analysis as unknown as Analysis) ?? null;
   }
 
+  /** Returns both analysis ID and payload for a conversation. */
+  async findLatestWithIdByConversation(
+    conversationId: string,
+  ): Promise<{ analysisId: string; analysis: Analysis } | null> {
+    const [row] = await this.db
+      .select({ id: analyses.id, analysis: analyses.analysis })
+      .from(analyses)
+      .where(eq(analyses.conversationId, conversationId))
+      .orderBy(analyses.createdAt)
+      .limit(1);
+
+    if (!row) return null;
+    return {
+      analysisId: row.id,
+      analysis: row.analysis as unknown as Analysis,
+    };
+  }
+
   /** Counts stored items of a given type. Used by tests and future reporting. */
   async countItemsByType(conversationId: string, type: string): Promise<number> {
     const rows = await this.db

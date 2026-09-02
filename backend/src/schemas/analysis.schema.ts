@@ -289,6 +289,15 @@ export const WarningSchema = z.object({
 });
 export type Warning = z.infer<typeof WarningSchema>;
 
+/** Personalized journal & diary entry generated with grammar correction and reflective tone. */
+export const JournalEntrySchema = z.object({
+  title: z.string().default(''),
+  polished_entry: z.string().default(''),
+  mood: z.string().default('Neutral'),
+  highlights: z.array(z.string()).default([]),
+});
+export type JournalEntry = z.infer<typeof JournalEntrySchema>;
+
 // ---------------------------------------------------------------------------
 // The analysis
 // ---------------------------------------------------------------------------
@@ -303,6 +312,8 @@ export const AnalysisSchema = z.object({
   /** BCP-47-ish language tag, or "mixed" for code-switched input. */
   language: z.string().default('und'),
   summary: z.string().default(''),
+  /** Polished personalized diary/journal entry with grammar correction. */
+  journal: JournalEntrySchema.optional(),
   segments: z.array(SegmentSchema).default([]),
   entities: z.array(EntitySchema).default([]),
   items: z.array(ItemSchema).default([]),
@@ -337,6 +348,7 @@ export const RawModelAnalysisSchema = z
     intent_confidence: z.number().optional(),
     language: z.string().optional(),
     summary: z.string().optional(),
+    journal: z.record(z.unknown()).optional(),
     entities: z.array(z.record(z.unknown())).optional(),
     items: z.array(z.record(z.unknown())).optional(),
     missing_information: z.array(z.record(z.unknown())).optional(),

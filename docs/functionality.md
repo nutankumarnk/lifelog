@@ -30,7 +30,8 @@ Everything below is a detail of that.
 | Capability | Status | Notes |
 | --- | --- | --- |
 | Accept free-form text via HTTP | IMPLEMENTED | `POST /api/v1/conversations/analyze` |
-| Preserve the original text exactly | IMPLEMENTED | Written first, byte-for-byte, never edited. Verified by test. |
+| Preserve the original text exactly | IMPLEMENTED | Written first and kept byte-for-byte until the user explicitly deletes the note. Verified by test. |
+| Delete a journal entry | IMPLEMENTED | Confirmed in the console; `DELETE /api/v1/notes/:id` permanently removes the source conversation and conversation-owned derived records. |
 | Reject empty and whitespace-only input | IMPLEMENTED | 400, nothing stored |
 | Enforce a length ceiling | IMPLEMENTED | 20,000 characters; 413 beyond it |
 | Split into meaningful segments | IMPLEMENTED | Sentences, and clauses when a sentence carries several facts. Offsets preserved. |
@@ -138,7 +139,8 @@ each one means.
 | Store provider metadata | IMPLEMENTED | Which provider, which model, degraded, latency |
 | Survive a failed analysis write | IMPLEMENTED | Returns the analysis with `persisted: false` and a warning |
 | Read stored data back over HTTP | NOT IMPLEMENTED | No `GET` endpoints yet. Phase 2. |
-| Delete or export a conversation | NOT IMPLEMENTED | Phase 8. |
+| Delete a conversation | IMPLEMENTED | `DELETE /api/v1/notes/:id`; irreversible and local-only until authentication exists. |
+| Export a conversation | NOT IMPLEMENTED | Phase 8. |
 
 ## AI provider handling
 

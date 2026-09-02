@@ -23,6 +23,7 @@ import {
   type Intent,
   type Item,
   type ItemType,
+  type JournalEntry,
   type MissingInfo,
   type Warning,
 } from '../schemas/analysis.schema.js';
@@ -238,7 +239,9 @@ export function normalizeEntities(rawEntities: unknown): NormalizedEntities {
     }
 
     const originalId = asString(record.id) ?? `e${index + 1}`;
-    const { kind, rawKind } = coerceEntityKind(record.kind ?? record.type ?? record.category);
+    const rawKindExplicit = asString(record.raw_kind) ?? asString(record.rawKind);
+    const { kind, rawKind: rawKindCoerced } = coerceEntityKind(record.kind ?? record.type ?? record.category);
+    const rawKind = rawKindExplicit ?? rawKindCoerced;
     const normalized = normalizeName(name);
     if (!normalized) {
       warnings.push({ code: 'ENTITY_DROPPED', message: `entity "${name}" normalised to empty` });
@@ -435,7 +438,6 @@ function normalizeTemporalShell(value: unknown): typeof EMPTY_TEMPORAL {
     recurrence: asString(record.recurrence) ?? null,
   };
 }
-
 // ---------------------------------------------------------------------------
 // Missing information
 // ---------------------------------------------------------------------------
@@ -465,4 +467,49 @@ export function detectLanguage(text: string, reported: unknown): string {
   const claimed = asString(reported)?.trim().toLowerCase();
   if (claimed && claimed !== 'und' && claimed.length <= 12) return claimed;
   return 'und';
+}
+
+function cleanJournalProse(text: string): string {
+  if (!text) return '';
+  return text
+    .replace(/\[(?:task|reminder|event|memory|note|edited|transcript|audio|speaker)[^\]]*\]/gi, '')
+    .replace(/^\s*[-*•]\s+/gm, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+/** Normalizes the personalized journal & diary entry with fallback handling. */
+export function normalizeJournal(
+  value: unknown,
+  fallbackSummaryText: string,
+  fallbackText: string,
+): JournalEntry {
+  const record = asRecord(value);
+  const rawTitle = asString(record.title)?.trim();
+  const rawPolished = asString(record.polished_entry ?? record.entry ?? record.text)?.trim();
+  const rawMood = asString(record.mood)?.trim();
+
+  const highlights = asArray(record.highlights)
+    .map((h) => asString(h)?.trim())
+    .filter((h): h is string => Boolean(h));
+
+  const title =
+    cleanJournalProse(rawTitle ?? '') ||
+    (fallbackSummaryText && fallbackSummaryText.length <= 60
+      ? cleanJournalProse(fallbackSummaryText)
+      : 'Personal Journal Entry');
+
+  const polished_entry =
+    cleanJournalProse(rawPolished ?? '') ||
+    cleanJournalProse(fallbackSummaryText) ||
+    cleanJournalProse(fallbackText);
+
+  const mood = rawMood || 'Neutral';
+
+  return {
+    title,
+    polished_entry,
+    mood,
+    highlights: highlights.length > 0 ? highlights : (fallbackSummaryText ? [fallbackSummaryText] : []),
+  };
 }

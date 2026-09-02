@@ -401,10 +401,21 @@ export class LocalRuleProvider implements AiProvider {
       intentConfidence = 0.3;
     }
 
+    const summary = titleFrom(text, 25);
     const raw = {
       intent,
       intent_confidence: intentConfidence,
-      summary: titleFrom(text, 25),
+      summary,
+      journal: {
+        title: summary,
+        polished_entry: text.trim(),
+        mood: items.some((i) => i.type === 'FEELING')
+          ? 'Reflective'
+          : items.some((i) => i.type === 'TASK')
+            ? 'Productive'
+            : 'Neutral',
+        highlights: items.map((i) => i.title).slice(0, 3),
+      },
       entities: entities.map((entity) => ({
         id: entity.id,
         kind: entity.kind,
@@ -424,6 +435,14 @@ export class LocalRuleProvider implements AiProvider {
         `${request.instructions}\n${request.userMessage}`,
         JSON.stringify(raw),
       ),
+      exchange: {
+        request: {
+          engine: 'Offline Deterministic Rule Engine',
+          system_instructions: request.instructions,
+          user_message: request.userMessage,
+        },
+        response: raw,
+      },
     };
   }
 }

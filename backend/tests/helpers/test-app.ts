@@ -59,7 +59,11 @@ export async function closeTestDb(): Promise<void> {
 /** Clears every table. Called between tests so assertions on counts are exact. */
 export async function truncateAll(db: Database): Promise<void> {
   await db.execute(
-    sql`TRUNCATE TABLE item_entities, items, entities, segments, follow_ups, ai_invocations, analyses, conversations RESTART IDENTITY CASCADE`,
+    sql`TRUNCATE TABLE
+      object_relationships, object_origins, memory_objects,
+      action_item_links, action_item_sources, action_items,
+      item_entities, items, entities, segments, follow_ups, ai_invocations, disagreements, pattern_weights, analyses, conversations
+      RESTART IDENTITY CASCADE`,
   );
 }
 

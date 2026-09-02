@@ -8,6 +8,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { analyzeConversation, fetchHealth, LifelogApiError } from './api';
 import { ResultPanel } from './components/ResultPanel';
 import { ActionLists } from './components/ActionLists';
+import { DiaryView } from './components/DiaryView';
+import { AISidebar } from './components/AISidebar';
 import { SAMPLES } from './samples';
 import type { AnalyzeResponse, HealthResponse } from './types';
 
@@ -43,6 +45,7 @@ function HealthBadge({ health, error }: { health: HealthResponse | null; error: 
 }
 
 export function App() {
+  const [activeTab, setActiveTab] = useState<'live' | 'diary' | 'tasks'>('live');
   const [text, setText] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -51,6 +54,7 @@ export function App() {
   const [health, setHealth] = useState<HealthResponse | null>(null);
   const [healthError, setHealthError] = useState(false);
   const [taskRefreshKey, setTaskRefreshKey] = useState(0);
+  const [showAIInfo, setShowAIInfo] = useState(false);
 
   const abortRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -143,112 +147,185 @@ export function App() {
       <header className="masthead">
         <div className="masthead__brand">
           <h1>Lifelog</h1>
-          <p>Phase 1 — conversation understanding test console</p>
+          <p>Phase 1 & 2 — Conversation Understanding & Personal Diary</p>
         </div>
-        <HealthBadge health={health} error={healthError} />
-      </header>
 
-      <main className="layout">
-        <section className="panel panel--input" aria-label="Conversation input">
-          <label className="label" htmlFor="conversation">
-            Write something the way you would to a friend
-          </label>
-          <textarea
-            id="conversation"
-            ref={textareaRef}
-            value={text}
-            onChange={(event) => setText(event.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="I met Arun yesterday in Ahmedabad and I need to send him the project files by Friday."
-            rows={6}
-            spellCheck={false}
-          />
-
-          <div className="controls">
-            <span className={`counter${overLimit ? ' counter--over' : ''}`}>
-              {text.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
-            </span>
-            <span className="hint">⌘/Ctrl + Enter</span>
+        <div className="masthead__right">
+          <HealthBadge health={health} error={healthError} />
+          {result && (
             <button
               type="button"
-              className="primary"
-              onClick={() => void submit()}
-              disabled={loading || !text.trim() || overLimit}
+              className="ai-details-btn masthead__ai-btn"
+              onClick={() => setShowAIInfo(true)}
             >
-              {loading ? 'Analyzing…' : 'Analyze'}
+              🔍 AI Details
             </button>
-          </div>
+          )}
+        </div>
+      </header>
 
-          <div className="samples">
-            <span className="label">Try one</span>
-            <div className="samples__list">
-              {SAMPLES.map((sample) => (
-                <button
-                  key={sample.label}
-                  type="button"
-                  className="sample"
-                  title={sample.hint}
-                  onClick={() => useSample(sample.text)}
-                >
-                  {sample.label}
-                </button>
-              ))}
+      {/* Main Navigation Tabs */}
+      <nav className="nav-tabs" aria-label="Main navigation">
+        <button
+          type="button"
+          className={`nav-tab ${activeTab === 'live' ? 'nav-tab--active' : ''}`}
+          onClick={() => setActiveTab('live')}
+        >
+          <span className="nav-tab__icon">✍️</span> Live Analysis
+        </button>
+        <button
+          type="button"
+          className={`nav-tab ${activeTab === 'diary' ? 'nav-tab--active' : ''}`}
+          onClick={() => setActiveTab('diary')}
+        >
+          <span className="nav-tab__icon">📖</span> Journal / Diary
+        </button>
+        <button
+          type="button"
+          className={`nav-tab ${activeTab === 'tasks' ? 'nav-tab--active' : ''}`}
+          onClick={() => setActiveTab('tasks')}
+        >
+          <span className="nav-tab__icon">⚡</span> Tasks & Reminders
+        </button>
+      </nav>
+
+      {/* TAB 1: LIVE ANALYSIS */}
+      {activeTab === 'live' && (
+        <main className="layout">
+          <section className="panel panel--input" aria-label="Conversation input">
+            <label className="label" htmlFor="conversation">
+              Write something the way you would to a friend
+            </label>
+            <textarea
+              id="conversation"
+              ref={textareaRef}
+              value={text}
+              onChange={(event) => setText(event.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="I met Arun yesterday in Ahmedabad and I need to send him the project files by Friday."
+              rows={6}
+              spellCheck={false}
+            />
+
+            <div className="controls">
+              <span className={`counter${overLimit ? ' counter--over' : ''}`}>
+                {text.length.toLocaleString()} / {MAX_CHARS.toLocaleString()}
+              </span>
+              <span className="hint">⌘/Ctrl + Enter</span>
+              <button
+                type="button"
+                className="primary"
+                onClick={() => void submit()}
+                disabled={loading || !text.trim() || overLimit}
+              >
+                {loading ? 'Analyzing…' : 'Analyze'}
+              </button>
+              <button
+                type="button"
+                className="ai-details-btn"
+                onClick={() => setShowAIInfo(true)}
+                disabled={!result}
+                title="View prompt sent to AI and raw AI response"
+              >
+                🔍 AI Details
+              </button>
             </div>
-          </div>
-        </section>
 
-        <div className="column">
-          <section className="panel panel--output" aria-label="Analysis output" aria-busy={loading}>
-            {loading ? (
-              <div className="loading">
-                <div className="skeleton skeleton--head" />
-                <div className="skeleton" />
-                <div className="skeleton skeleton--short" />
-                <p className="muted">
-                  Asking the AI model… {(elapsedMs / 1000).toFixed(1)}s
-                  {elapsedMs > 12_000
-                    ? ' — still waiting on the hosted model. If it exceeds the deadline, you can try again.'
-                    : ''}
-                </p>
+            <div className="samples">
+              <span className="label">Try one</span>
+              <div className="samples__list">
+                {SAMPLES.map((sample) => (
+                  <button
+                    key={sample.label}
+                    type="button"
+                    className="sample"
+                    title={sample.hint}
+                    onClick={() => useSample(sample.text)}
+                  >
+                    {sample.label}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <>
-                {error ? (
-                  <div className="errorbox" role="alert">
-                    <h3>{error.title}</h3>
-                    <p>{error.detail}</p>
-                    {error.requestId ? (
-                      <p className="muted">
-                        Request id <code>{error.requestId}</code>
-                      </p>
-                    ) : null}
-                    <button type="button" className="primary" onClick={() => void submit()}>
-                      Try again
-                    </button>
-                  </div>
-                ) : null}
-                {result ? (
-                  <ResultPanel result={result} />
-                ) : !error ? (
-                  <div className="empty empty--initial">
-                    <h3>Nothing analyzed yet</h3>
-                    <p>
-                      Type a message or pick a sample. Lifelog will break it into people, places, events,
-                      tasks, reminders, decisions and feelings — and show you the exact words each one
-                      came from.
-                    </p>
-                  </div>
-                ) : null}
-              </>
-            )}
+            </div>
           </section>
 
+          <div className="column">
+            <section className="panel panel--output" aria-label="Analysis output" aria-busy={loading}>
+              {loading ? (
+                <div className="loading">
+                  <div className="skeleton skeleton--head" />
+                  <div className="skeleton" />
+                  <div className="skeleton skeleton--short" />
+                  <p className="muted">
+                    Asking the AI model… {(elapsedMs / 1000).toFixed(1)}s
+                    {elapsedMs > 12_000
+                      ? ' — still waiting on the hosted model. If it exceeds the deadline, you can try again.'
+                      : ''}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {error ? (
+                    <div className="errorbox" role="alert">
+                      <h3>{error.title}</h3>
+                      <p>{error.detail}</p>
+                      {error.requestId ? (
+                        <p className="muted">
+                          Request id <code>{error.requestId}</code>
+                        </p>
+                      ) : null}
+                      <button type="button" className="primary" onClick={() => void submit()}>
+                        Try again
+                      </button>
+                    </div>
+                  ) : null}
+                  {result ? (
+                    <ResultPanel result={result} />
+                  ) : !error ? (
+                    <div className="empty empty--initial">
+                      <h3>Nothing analyzed yet</h3>
+                      <p>
+                        Type a message or pick a sample. Lifelog will break it into people, places, events,
+                        tasks, reminders, decisions and feelings — and show you the exact words each one
+                        came from.
+                      </p>
+                    </div>
+                  ) : null}
+                </>
+              )}
+            </section>
+
+            <ActionLists refreshKey={taskRefreshKey} />
+          </div>
+        </main>
+      )}
+
+      {/* TAB 2: PERSONAL JOURNAL & DIARY */}
+      {activeTab === 'diary' && (
+        <main className="layout-diary">
+          <DiaryView onSwitchToLive={() => setActiveTab('live')} />
+        </main>
+      )}
+
+      {/* TAB 3: TASKS & REMINDERS */}
+      {activeTab === 'tasks' && (
+        <main className="layout-tasks">
+          <div className="tasks-page-header">
+            <h2>⚡ Action Items: Tasks & Scheduled Reminders</h2>
+            <p className="muted">
+              Everything the AI extracted from your past conversations that needs action or notification.
+            </p>
+          </div>
           <ActionLists refreshKey={taskRefreshKey} />
-        </div>
-      </main>
+        </main>
+      )}
+
+      {showAIInfo && result && (
+        <AISidebar result={result} onClose={() => setShowAIInfo(false)} />
+      )}
 
       <footer className="foot">
-        <span>Temporary harness. Talks only to the backend API — no keys, no model, no database.</span>
+        <span>Lifelog Test Harness & Journal. Talks to the backend API on port 4319.</span>
       </footer>
     </div>
   );

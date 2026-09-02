@@ -129,7 +129,7 @@ GOOGLE_API_KEY = REPLACE_ME
     expect(result.skipped.every((entry) => entry.reason === 'placeholder value')).toBe(true);
   });
 
-  it('warns when the file is readable by other users', () => {
+  it.skipIf(process.platform === 'win32')('warns when the file is readable by other users', () => {
     const root = withKeysFile(`OPENROUTER_API_KEY = ${FAKE_OPENROUTER}`, 0o644);
     const result = loadKeysFile({ rootDir: root, env: {} });
 

@@ -271,6 +271,22 @@ Full taxonomy: [`error-handling.md`](error-handling.md).
 
 ---
 
+## DELETE /api/v1/notes/:id
+
+Permanently deletes one journal note. The `id` is the conversation UUID returned
+by the analyze endpoint and by `GET /api/v1/notes`.
+
+Deleting the source conversation also deletes its analyses and all records owned
+by that conversation through database cascades. Shared cross-conversation task
+and memory records retain any provenance from other notes.
+
+### Response — 204
+
+No response body. Returns `404 NOT_FOUND` when the note does not exist and `400
+VALIDATION_ERROR` when `id` is not a UUID.
+
+---
+
 ## GET /health
 
 Reports whether Lifelog can do its job, not merely whether the process is alive.

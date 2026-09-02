@@ -22,6 +22,13 @@
       "when": 1787250000000,
       "tag": "0002_action_items",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787300000000,
+      "tag": "0003_same_blacklash",
+      "breakpoints": true
     }
   ]
 }

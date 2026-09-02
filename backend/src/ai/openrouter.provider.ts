@@ -173,6 +173,26 @@ export class OpenRouterProvider implements AiProvider {
         rawText: content,
         latencyMs: Date.now() - startedAt,
         usage: sumUsage(usages) ?? estimateUsage(`${request.instructions}\n${request.userMessage}`, content),
+        exchange: {
+          request: {
+            endpoint: `${this.options.baseUrl}/chat/completions`,
+            model: this.options.model,
+            temperature: this.options.temperature,
+            max_tokens: MAX_COMPLETION_TOKENS,
+            system_instructions: request.instructions,
+            user_message: request.userMessage,
+            chat_payload: {
+              model: this.options.model,
+              messages: [
+                { role: 'system', content: request.instructions },
+                { role: 'user', content: request.userMessage },
+              ],
+              temperature: this.options.temperature,
+              max_tokens: MAX_COMPLETION_TOKENS,
+            },
+          },
+          response: payload,
+        },
       };
     } catch (error) {
       if (error instanceof AiProviderError) throw error;

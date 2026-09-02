@@ -15,15 +15,21 @@ import { buildAiRuntime, type AiRuntimeOptions } from './ai/registry.js';
 import { loadConfig, type AppConfig } from './config/env.js';
 import { getDb, type Database } from './db/client.js';
 import { ConversationController } from './controllers/conversation.controller.js';
+import { MemoryController } from './controllers/memory.controller.js';
+import { NoteController } from './controllers/note.controller.js';
 import { ReminderController, TaskController } from './controllers/task.controller.js';
 import { registerErrorHandler } from './errors/handler.js';
 import { ActionItemRepository } from './repositories/action-item.repository.js';
 import { AnalysisRepository } from './repositories/analysis.repository.js';
 import { ConversationRepository } from './repositories/conversation.repository.js';
+import { MemoryRepository } from './repositories/memory.repository.js';
 import { registerConversationRoutes } from './routes/conversations.route.js';
 import { registerHealthRoutes } from './routes/health.route.js';
+import { registerMemoryRoutes } from './routes/memory.route.js';
+import { registerNoteRoutes } from './routes/notes.route.js';
 import { registerActionRoutes } from './routes/tasks.route.js';
 import { ConversationService } from './services/conversation.service.js';
+import { MemoryService } from './services/memory.service.js';
 import { summarizeText } from './utils/redact.js';
 
 export const APP_VERSION = '1.0.0';
@@ -81,7 +87,7 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
 
   await app.register(cors, {
     origin: config.corsOrigins.length > 0 ? config.corsOrigins : false,
-    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: false,
   });
 
@@ -104,11 +110,16 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
 
   if (db) {
     const actionItems = new ActionItemRepository(db);
+    const analyses = new AnalysisRepository(db);
+    const memoryRepo = new MemoryRepository(db);
+    const memoryService = new MemoryService({ memory: memoryRepo });
+    const memoryController = new MemoryController(memoryService, analyses);
 
     const service = new ConversationService({
       conversations: new ConversationRepository(db),
-      analyses: new AnalysisRepository(db),
+      analyses,
       actionItems,
+      memoryService,
       runtime,
       clock: options.clock,
       logger: {
@@ -123,6 +134,12 @@ export async function buildServer(options: BuildServerOptions = {}): Promise<Bui
         service,
         config.EXPOSE_AI_TRACE && !config.isProduction,
       ),
+    });
+    await registerNoteRoutes(app, {
+      controller: new NoteController(service),
+    });
+    await registerMemoryRoutes(app, {
+      controller: memoryController,
     });
     await registerActionRoutes(app, {
       tasks: new TaskController(actionItems),

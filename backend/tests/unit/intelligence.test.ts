@@ -524,22 +524,20 @@ describe('prompt', () => {
   const instructions = buildInstructions(now, 'Asia/Kolkata');
 
   it('tells the model the current date and time in the user timezone', () => {
-    expect(instructions).toContain('CURRENT DATE AND TIME:');
+    expect(instructions).toContain('NOW:');
     expect(instructions).toMatch(/21 August 2026/);
     expect(instructions).toContain('Asia/Kolkata');
     expect(instructions).toMatch(/15:30/);
-    expect(instructions).toMatch(/no clock of your own/i);
   });
 
-  it('repeats the clock on the user turn so it cannot be skipped', () => {
+  it('formats clean compact user message without redundant clock duplication', () => {
     const user = buildUserMessage({
       text: 'Remind me to call the dentist next Monday.',
       now,
       timezone: 'Asia/Kolkata',
     });
-    expect(user).toContain('CURRENT DATE AND TIME:');
-    expect(user).toMatch(/15:30/);
     expect(user).toContain('Remind me to call the dentist next Monday.');
+    expect(user).toMatch(/^"""/);
   });
 
   it('falls back to UTC when the timezone is missing or invalid', () => {
@@ -549,20 +547,25 @@ describe('prompt', () => {
   });
 
   it('forbids the model from computing dates', () => {
-    expect(instructions).toContain('DO NOT COMPUTE ISO DATES');
+    expect(instructions).toContain('Do not compute ISO dates');
   });
 
   it('states the task/reminder distinction Lifelog enforces in code', () => {
-    expect(instructions).toContain('TASK vs REMINDER');
-    expect(instructions).toMatch(/asked to be reminded/i);
+    expect(instructions).toContain('TASK:');
+    expect(instructions).toContain('REMINDER:');
+    expect(instructions).toMatch(/requests notification/i);
   });
 
   it('requires verbatim grounding', () => {
-    expect(instructions).toContain('GROUND EVERYTHING');
+    expect(instructions).toContain('GROUNDING');
     expect(instructions).toContain('character-for-character');
   });
 
+  it('mandates multi-item extraction for compound messages', () => {
+    expect(instructions).toContain('MULTI-ITEM EXTRACTION');
+  });
+
   it('tells the model that extracting nothing is a valid answer', () => {
-    expect(instructions).toMatch(/empty result is a valid and correct answer/i);
+    expect(instructions).toMatch(/empty items if no life information/i);
   });
 });
