@@ -150,6 +150,7 @@ whichever question you have.
 **Understanding the design**
 - [`docs/algorithm.md`](docs/algorithm.md) — **Lifelog's intelligence rules.** The most important document.
 - [`docs/memory.md`](docs/memory.md) — the memory philosophy
+- [`docs/connection-map.md`](docs/connection-map.md) — entities, relationship rules, graph API and Sigma UI
 - [`docs/ai-engine.md`](docs/ai-engine.md) — how the model is used, and how to replace it
 - [`docs/decision.md`](docs/decision.md) — why things are the way they are
 
