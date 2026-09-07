@@ -42,6 +42,28 @@ function makeAnalysis(partial: Partial<Analysis>): Analysis {
 
 describe('connection-builder V2', () => {
 
+  it('accepts an explicit grounded person-to-place connection', () => {
+    const analysis = makeAnalysis({
+      entities: [
+        { id: 'e1', kind: 'PERSON', raw_kind: null, name: 'Rahul', normalized_name: 'rahul', aliases: [], relation: null, attributes: {}, mentions: [], confidence: 0.95 },
+        { id: 'e2', kind: 'PLACE', raw_kind: null, name: 'Madras Cafe', normalized_name: 'madras cafe', aliases: [], relation: null, attributes: {}, mentions: [], confidence: 0.95 },
+      ],
+      connections: [{
+        source_entity_id: 'e1',
+        target_entity_id: 'e2',
+        relationship_type: 'met_at',
+        evidence: 'met Rahul at Madras Cafe',
+        confidence: 0.9,
+      }],
+    });
+
+    const { relationships } = buildConnections(analysis);
+    expect(relationships).toContainEqual(expect.objectContaining({
+      relationshipType: 'met_at',
+      evidence: 'met Rahul at Madras Cafe',
+    }));
+  });
+
   // -------------------------------------------------------------------------
   // Entity kind → V2 type mapping
   // -------------------------------------------------------------------------

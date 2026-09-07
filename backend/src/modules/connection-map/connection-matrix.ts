@@ -37,11 +37,13 @@ const MATRIX: Record<string, Record<string, ReadonlySet<string>>> = {
     // PERSON → PERSON: knows, works_with, related_to
     person: new Set([
       'knows',
+      'met_with',
       'works_with',
       'related_to',
     ]),
     // PERSON → PROJECT: works_on
     project: new Set([
+      'discussed',
       'works_on',
     ]),
     // PERSON → PLACE: lives_in, works_at, visited
@@ -49,9 +51,11 @@ const MATRIX: Record<string, Record<string, ReadonlySet<string>>> = {
       'lives_in',
       'works_at',
       'visited',
+      'met_at',
     ]),
     // PERSON → ORGANIZATION: works_at, member_of
     organization: new Set([
+      'discussed',
       'works_at',
       'member_of',
     ]),

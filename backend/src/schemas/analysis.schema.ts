@@ -13,7 +13,7 @@
 import { z } from 'zod';
 
 /** Bumped whenever the analysis shape changes in a non-additive way. */
-export const ANALYSIS_SCHEMA_VERSION = '1.1.0';
+export const ANALYSIS_SCHEMA_VERSION = '1.2.0';
 
 // ---------------------------------------------------------------------------
 // Enumerations
@@ -69,6 +69,7 @@ export type ItemType = z.infer<typeof ItemTypeEnum>;
 export const EntityKindEnum = z.enum([
   'PERSON',
   'PLACE',
+  'PROJECT',
   'ORGANIZATION',
   'OBJECT',
   'TOPIC',
@@ -165,6 +166,23 @@ export const EntitySchema = z.object({
   confidence: Confidence.default(0.5),
 });
 export type Entity = z.infer<typeof EntitySchema>;
+
+/**
+ * A direct, text-grounded relationship proposed by the model.
+ *
+ * The IDs reference entities in this same analysis. The memory graph resolves
+ * them to persistent object IDs only after the relationship passes the
+ * Connection Matrix. Indirect graph paths are computed at read time and must
+ * never be emitted here as if they were direct facts.
+ */
+export const ConnectionSchema = z.object({
+  source_entity_id: z.string(),
+  target_entity_id: z.string(),
+  relationship_type: z.string().min(1),
+  evidence: z.string().min(1),
+  confidence: Confidence.default(0.5),
+});
+export type Connection = z.infer<typeof ConnectionSchema>;
 
 /** Type-specific payload. Kept as an open record so item types stay additive. */
 export const ItemDetailsSchema = z
@@ -317,6 +335,7 @@ export const AnalysisSchema = z.object({
   segments: z.array(SegmentSchema).default([]),
   entities: z.array(EntitySchema).default([]),
   items: z.array(ItemSchema).default([]),
+  connections: z.array(ConnectionSchema).default([]).optional(),
   /** Inferred impacts only — expressed emotion lives as FEELING items. */
   emotional_impact: z.array(EmotionalImpactSchema).default([]),
   /** What the algorithm could not resolve before / after the teacher. */
@@ -351,6 +370,7 @@ export const RawModelAnalysisSchema = z
     journal: z.record(z.unknown()).optional(),
     entities: z.array(z.record(z.unknown())).optional(),
     items: z.array(z.record(z.unknown())).optional(),
+    connections: z.array(z.record(z.unknown())).optional(),
     missing_information: z.array(z.record(z.unknown())).optional(),
     follow_up: z.union([z.record(z.unknown()), z.string(), z.null()]).optional(),
   })

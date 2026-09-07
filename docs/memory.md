@@ -102,13 +102,18 @@ When a phrase is genuinely ambiguous — "kal", "in a few days" — the resoluti
 `null` and the phrase stands alone. **An unresolved date is a truthful record; a
 guessed one is a fabrication with a timestamp.**
 
-### 7. Relationships — mostly deferred
+### 7. Relationships — direct and evidenced
 
-Today: items link to entities via `item_entities`, with a `role` column reserved
-for typed relationships. Not today: person-to-person relationships, entity
-timelines, causal or thematic links between memories. That is Phase 5, and the
-schema is shaped to accept it — every item and entity carries `conversation_id`
-directly, so cross-conversation queries do not need to join through `analyses`.
+Identity-bearing entities are resolved into persistent `memory_objects` and
+linked through typed `object_relationships`. A model may propose a connection,
+but it is stored only when both endpoints exist, its confidence meets the
+threshold, its evidence is a verbatim substring of the conversation, and the
+entity-type/relationship combination is in the server-owned Connection Matrix.
+
+Co-occurrence is not proof. Two people connected to the same café or project
+form a two-hop path; Lifelog does not turn that path into a claim that they know
+each other. `object_origins` retains the conversation behind each object, while
+relationship attributes retain the supporting evidence for inspection.
 
 ---
 
@@ -163,9 +168,8 @@ Directional, not committed. See [`roadmap.md`](roadmap.md).
   follow-up answer back into an existing conversation.
 - **Phase 4 — Recall.** Answering `ASK` intent from stored data. Requires search:
   probably Postgres full-text first, embeddings later, both over the same tables.
-- **Phase 5 — Relationships.** Cross-conversation entity identity, typed links,
-  entity timelines. The `role` column and the `normalized_name` index are the
-  seams.
+- **Phase 5 — Relationship refinement.** Alias review, ambiguous-identity
+  merge/split controls, relationship evidence history, and entity timelines.
 - **Phase 6 — Personalisation.** Learning that this user's "the usual place"
   means one specific café. This is where a personal memory model becomes more
   valuable than a larger general one.

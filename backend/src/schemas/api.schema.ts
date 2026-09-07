@@ -316,3 +316,13 @@ export const ConversationObjectsSchema = z.object({
   relationships: z.array(ObjectRelationshipApiSchema),
 });
 export type ConversationObjects = z.infer<typeof ConversationObjectsSchema>;
+
+export const MemoryGraphQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(1000).default(500),
+});
+
+export const MemoryGraphResponseSchema = z.object({
+  objects: z.array(MemoryObjectSchema),
+  relationships: z.array(ObjectRelationshipApiSchema),
+});
+export type MemoryGraphResponse = z.infer<typeof MemoryGraphResponseSchema>;

@@ -29,14 +29,17 @@ import { getAllMatrixRelationshipTypes } from '../modules/connection-map/connect
 export const KNOWN_RELATIONSHIP_TYPES = [
   // PERSON → PERSON
   'knows',
+  'met_with',
   'works_with',
   'related_to',
   // PERSON → PROJECT
+  'discussed',
   'works_on',
   // PERSON → PLACE
   'lives_in',
   'works_at',
   'visited',
+  'met_at',
   // PERSON → ORGANIZATION
   'member_of',
   // PERSON → EVENT / EVENT → PERSON

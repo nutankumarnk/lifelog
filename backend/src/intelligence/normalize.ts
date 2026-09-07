@@ -20,6 +20,7 @@ import {
   TaskStatusEnum,
   type Entity,
   type EntityKind,
+  type Connection,
   type Intent,
   type Item,
   type ItemType,
@@ -168,6 +169,9 @@ const ENTITY_KIND_ALIASES: Record<string, EntityKind> = {
   country: 'PLACE',
   venue: 'PLACE',
   address: 'PLACE',
+  project: 'PROJECT',
+  initiative: 'PROJECT',
+  program: 'PROJECT',
   organization: 'ORGANIZATION',
   organisation: 'ORGANIZATION',
   company: 'ORGANIZATION',
@@ -203,6 +207,78 @@ export function coerceEntityKind(value: unknown): { kind: EntityKind; rawKind: s
   if (alias) return { kind: alias, rawKind: null };
 
   return { kind: 'OTHER', rawKind: text };
+}
+
+// ---------------------------------------------------------------------------
+// Connections
+// ---------------------------------------------------------------------------
+
+export interface NormalizedConnections {
+  connections: Connection[];
+  warnings: Warning[];
+}
+
+/**
+ * Normalise model-proposed direct relationships and enforce basic grounding.
+ * Semantic validity is deliberately left to the Connection Matrix.
+ */
+export function normalizeConnections(
+  rawConnections: unknown,
+  idMap: Map<string, string>,
+  sourceText: string,
+): NormalizedConnections {
+  const connections: Connection[] = [];
+  const warnings: Warning[] = [];
+  const validIds = new Set(idMap.values());
+  const seen = new Set<string>();
+
+  for (const [index, raw] of asArray(rawConnections).entries()) {
+    const record = asRecord(raw);
+    const rawSource = asString(record.source_entity_id ?? record.source ?? record.from);
+    const rawTarget = asString(record.target_entity_id ?? record.target ?? record.to);
+    const source = rawSource ? (idMap.get(rawSource) ?? rawSource) : null;
+    const target = rawTarget ? (idMap.get(rawTarget) ?? rawTarget) : null;
+    const relationshipType = (asString(record.relationship_type ?? record.type ?? record.relationship) ?? '')
+      .toLowerCase()
+      .trim()
+      .replace(/[\s-]+/g, '_');
+    const evidence = (asString(record.evidence ?? record.source_text ?? record.quote) ?? '').trim();
+
+    if (!source || !target || !validIds.has(source) || !validIds.has(target)) {
+      warnings.push({
+        code: 'CONNECTION_DROPPED',
+        message: `connection at position ${index} referenced an unknown entity`,
+      });
+      continue;
+    }
+    if (source === target || !relationshipType) {
+      warnings.push({
+        code: 'CONNECTION_DROPPED',
+        message: `connection at position ${index} was self-referencing or untyped`,
+      });
+      continue;
+    }
+    if (!evidence || !sourceText.includes(evidence)) {
+      warnings.push({
+        code: 'CONNECTION_DROPPED',
+        message: `connection at position ${index} was not grounded in the original text`,
+      });
+      continue;
+    }
+
+    const key = `${source}|${target}|${relationshipType}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    connections.push({
+      source_entity_id: source,
+      target_entity_id: target,
+      relationship_type: relationshipType,
+      evidence,
+      confidence: clamp01(asNumber(record.confidence, 0.5)),
+    });
+  }
+
+  return { connections, warnings };
 }
 
 // ---------------------------------------------------------------------------

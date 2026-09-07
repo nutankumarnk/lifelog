@@ -338,6 +338,10 @@ export interface MemoryObjectRelationship {
   target_object_id?: string;
   relationship_type: string;
   confidence: number;
+  source_conversation_id?: string;
+  attributes?: Record<string, unknown>;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface MemoryObjectDetail extends MemoryObject {
@@ -353,5 +357,7 @@ export interface MemoryObjectDetail extends MemoryObject {
 
 export interface MemoryGraphData {
   objects: MemoryObject[];
-  edges: Array<{ source: string; target: string; label: string }>;
+  relationships: Array<Required<Pick<MemoryObjectRelationship,
+    'id' | 'source_object_id' | 'target_object_id' | 'relationship_type' | 'confidence'
+  >> & MemoryObjectRelationship>;
 }

@@ -46,11 +46,11 @@ describe('memory validation V2', () => {
     // All and ONLY the types in the spec §4 Connection Matrix
     const expected = [
       // PERSON → PERSON
-      'knows', 'works_with', 'related_to',
+      'knows', 'met_with', 'works_with', 'related_to',
       // PERSON → PROJECT
-      'works_on',
+      'discussed', 'works_on',
       // PERSON → PLACE
-      'lives_in', 'visited',
+      'lives_in', 'visited', 'met_at',
       // PERSON → ORGANIZATION
       'member_of',
       // PERSON / EVENT → EVENT / PERSON
@@ -71,7 +71,7 @@ describe('memory validation V2', () => {
 
     // Removed types — verify they are NOT in the list
     const removed = [
-      'met', 'owns', 'manages', 'contributes_to', 'met_at',
+      'met', 'owns', 'manages', 'contributes_to',
       'attended', 'organized', 'attended_by', 'organized_by',
       'developed_for', 'part_of', 'requires', 'includes',
       'operates_at', 'develops', 'associated_with',

@@ -75,7 +75,7 @@ shared or public server.
 
 | Field | Type | Notes |
 | --- | --- | --- |
-| `schema_version` | string | `1.0.0` |
+| `schema_version` | string | `1.2.0` |
 | `intent` | enum | One of nine. See [`glossary.md`](glossary.md). |
 | `intent_confidence` | number | 0–1, never above 0.95 |
 | `language` | string | BCP-47-ish tag, or `mixed` for code-switched text |
@@ -83,6 +83,7 @@ shared or public server.
 | `segments` | array | The conversation split into pieces, with character spans |
 | `entities` | array | People, places, organisations, objects, topics, unknowns |
 | `items` | array | The extracted life information |
+| `connections` | array | Direct entity relationships with verbatim evidence and confidence |
 | `missing_information` | array | Important fields that are absent |
 | `follow_up` | object or null | **At most one question, ever** |
 | `warnings` | array | What the pipeline overrode, dropped or repaired |
@@ -95,6 +96,11 @@ a `temporal` block, `entity_ids`, type-specific `details`, and a calibrated
 The `temporal` block always keeps both the user's phrase and Lifelog's reading of
 it: `raw` is what they wrote, `resolved` is the ISO date, and `resolved` may be
 `null` when the phrase is genuinely ambiguous. See [`algorithm.md`](algorithm.md).
+
+Connections reference entity IDs from the same analysis. They are suggestions
+until the backend validates the entity-type pair, relationship type, confidence,
+and evidence. Shared neighbors are indirect paths and are not returned as direct
+connections.
 
 #### Example response
 
@@ -284,6 +290,29 @@ and memory records retain any provenance from other notes.
 
 No response body. Returns `404 NOT_FOUND` when the note does not exist and `400
 VALIDATION_ERROR` when `id` is not a UUID.
+
+---
+
+## GET /api/v1/memory/graph
+
+Returns the persisted Connection Map as a bounded graph snapshot. `limit`
+defaults to 500 nodes and is capped at 1,000. Only relationships whose source
+and target are both included in the returned node set are included.
+
+```json
+{
+  "objects": [{ "id": "uuid", "type": "person", "name": "Rahul", "mention_count": 2 }],
+  "relationships": [{
+    "id": "uuid",
+    "source_object_id": "uuid",
+    "target_object_id": "uuid",
+    "relationship_type": "met_at",
+    "confidence": 0.91,
+    "source_conversation_id": "uuid",
+    "attributes": { "evidence": "met Rahul at Madras Cafe" }
+  }]
+}
+```
 
 ---
 

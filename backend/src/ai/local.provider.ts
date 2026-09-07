@@ -68,6 +68,14 @@ interface DraftItem {
   confidence: number;
 }
 
+interface DraftConnection {
+  source_entity_id: string;
+  target_entity_id: string;
+  relationship_type: string;
+  evidence: string;
+  confidence: number;
+}
+
 /** Capitalised runs, excluding sentence-initial words that are not proper nouns. */
 function findProperNouns(text: string, offset: number): Array<{ name: string; start: number; end: number }> {
   const results: Array<{ name: string; start: number; end: number }> = [];
@@ -188,6 +196,7 @@ export class LocalRuleProvider implements AiProvider {
     const segments = segmentConversation(text);
     const entities: DraftEntity[] = [];
     const items: DraftItem[] = [];
+    const connections: DraftConnection[] = [];
     const entityIndex = new Map<string, DraftEntity>();
 
     const addEntity = (
@@ -244,6 +253,10 @@ export class LocalRuleProvider implements AiProvider {
           entity.mentions.some((mention) => mention.start >= span.start && mention.end <= span.end),
         )
         .map((entity) => entity.id);
+
+      const segmentEntities = entityIds
+        .map((id) => entities.find((entity) => entity.id === id))
+        .filter((entity): entity is DraftEntity => Boolean(entity));
 
       const temporalPhrases = findTemporalPhrases(body);
       const grammarTense = inferTenseFromGrammar(body);
@@ -360,6 +373,71 @@ export class LocalRuleProvider implements AiProvider {
           pushItem('PAST_EVENT', {}, 0.6, 1);
         }
       }
+
+
+      // Conservative offline Connection Map extraction. The hosted model can
+      // express richer relationships, but the fallback still supports the
+      // core examples without turning general co-occurrence into an edge.
+      const people = segmentEntities.filter((entity) => entity.kind === 'PERSON');
+      const places = segmentEntities.filter((entity) => entity.kind === 'PLACE');
+      if (/\bmet\b/i.test(body)) {
+        for (const person of people) {
+          for (const place of places) {
+            connections.push({
+              source_entity_id: person.id,
+              target_entity_id: place.id,
+              relationship_type: 'met_at',
+              evidence: body,
+              confidence: 0.72,
+            });
+          }
+        }
+        for (let left = 0; left < people.length; left++) {
+          for (let right = left + 1; right < people.length; right++) {
+            connections.push({
+              source_entity_id: people[left]!.id,
+              target_entity_id: people[right]!.id,
+              relationship_type: 'met_with',
+              evidence: body,
+              confidence: 0.65,
+            });
+          }
+        }
+      }
+
+      if (/\b(?:visited|went to|going to|travelled to|traveled to|flew to)\b/i.test(body)) {
+        for (const person of people) {
+          for (const place of places) {
+            connections.push({
+              source_entity_id: person.id,
+              target_entity_id: place.id,
+              relationship_type: 'visited',
+              evidence: body,
+              confidence: 0.68,
+            });
+          }
+        }
+      }
+
+      if (/\bdiscuss(?:ed|ing)?\b/i.test(body) && people.length > 0) {
+        const discussedEntities = segmentEntities.filter((entity) =>
+          entity.kind === 'PROJECT' || entity.kind === 'ORGANIZATION' || entity.kind === 'OTHER',
+        );
+        for (const subject of discussedEntities) {
+          // In the deterministic fallback, a named but otherwise untyped
+          // discussion subject is treated as a project, never a person/place.
+          if (subject.kind === 'OTHER') subject.kind = 'PROJECT';
+          for (const person of people) {
+            connections.push({
+              source_entity_id: person.id,
+              target_entity_id: subject.id,
+              relationship_type: 'discussed',
+              evidence: body,
+              confidence: 0.62,
+            });
+          }
+        }
+      }
     }
 
     // --- Intent -----------------------------------------------------------
@@ -425,6 +503,7 @@ export class LocalRuleProvider implements AiProvider {
         confidence: entity.confidence,
       })),
       items,
+      connections,
     };
 
     return {

@@ -124,9 +124,8 @@ describe('PERSON → PLACE (spec §4)', () => {
     expect(isAllowedRelationship('person', 'place', 'visited')).toBe(true);
   });
 
-  // Removed types — spec §4 does not include these
-  it('does NOT allow "met_at" (removed from spec §4)', () => {
-    expect(isAllowedRelationship('person', 'place', 'met_at')).toBe(false);
+  it('allows "met_at" for an explicitly grounded meeting place', () => {
+    expect(isAllowedRelationship('person', 'place', 'met_at')).toBe(true);
   });
   it('does NOT allow "teleported_to"', () => {
     expect(isAllowedRelationship('person', 'place', 'teleported_to')).toBe(false);

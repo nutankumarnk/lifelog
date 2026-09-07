@@ -9,6 +9,7 @@ import { analyzeConversation, fetchHealth, LifelogApiError } from './api';
 import { ResultPanel } from './components/ResultPanel';
 import { ActionLists } from './components/ActionLists';
 import { DiaryView } from './components/DiaryView';
+import { ConnectionMap } from './components/ConnectionMap';
 import { AISidebar } from './components/AISidebar';
 import { SAMPLES } from './samples';
 import type { AnalyzeResponse, HealthResponse } from './types';
@@ -45,7 +46,7 @@ function HealthBadge({ health, error }: { health: HealthResponse | null; error: 
 }
 
 export function App() {
-  const [activeTab, setActiveTab] = useState<'live' | 'diary' | 'tasks'>('live');
+  const [activeTab, setActiveTab] = useState<'live' | 'diary' | 'tasks' | 'connections'>('live');
   const [text, setText] = useState('');
   const [result, setResult] = useState<AnalyzeResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -187,6 +188,13 @@ export function App() {
         >
           <span className="nav-tab__icon">⚡</span> Tasks & Reminders
         </button>
+        <button
+          type="button"
+          className={`nav-tab ${activeTab === 'connections' ? 'nav-tab--active' : ''}`}
+          onClick={() => setActiveTab('connections')}
+        >
+          <span className="nav-tab__icon">🕸️</span> Connection Map
+        </button>
       </nav>
 
       {/* TAB 1: LIVE ANALYSIS */}
@@ -319,6 +327,8 @@ export function App() {
           <ActionLists refreshKey={taskRefreshKey} />
         </main>
       )}
+
+      {activeTab === 'connections' && <ConnectionMap />}
 
       {showAIInfo && result && (
         <AISidebar result={result} onClose={() => setShowAIInfo(false)} />

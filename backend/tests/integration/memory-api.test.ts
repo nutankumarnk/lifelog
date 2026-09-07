@@ -131,4 +131,19 @@ describe('Memory Graph API', () => {
     const body = relsRes.json();
     expect(Array.isArray(body.relationships)).toBe(true);
   });
+
+  it('returns nodes and edges from the graph endpoint', async () => {
+    await analyze(harness.app, { text: 'I met Arun at Blue Moon Cafe yesterday.' });
+
+    const graphRes = await harness.app.inject({
+      method: 'GET',
+      url: '/api/v1/memory/graph',
+    });
+
+    expect(graphRes.statusCode).toBe(200);
+    const graph = graphRes.json();
+    expect(graph.objects.some((object: any) => object.name === 'Arun')).toBe(true);
+    expect(Array.isArray(graph.relationships)).toBe(true);
+    expect(graph.relationships.length).toBeGreaterThan(0);
+  });
 });

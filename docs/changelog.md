@@ -8,6 +8,22 @@ Format: date, version, what changed, why.
 
 ---
 
+## 2026-09-07 — 1.2.0
+
+### Added
+
+**Connection Map.** The analysis contract now accepts `PROJECT` entities and
+direct, verbatim-grounded `connections`. Suggested relationships pass through a
+server-owned allow-list before persistence; mere co-occurrence no longer becomes
+a claimed relationship. `GET /api/v1/memory/graph` returns a bounded node/edge
+snapshot. The React console includes a WebGL Sigma.js map with a worker-based
+ForceAtlas2 layout, entity colors, search, filters, neighborhood highlighting,
+zoom/fullscreen controls, and an entity detail panel.
+
+*Why:* accumulated people, places, projects, organizations, events, and objects
+are more useful when users can explore their evidenced connections across
+journal entries without turning indirect paths into unsupported facts.
+
 ## 2026-09-02 — 1.1.6
 
 ### Added

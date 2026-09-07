@@ -18,7 +18,8 @@
  *
  *   RELATIONSHIPS
  *   -------------
- *   - Relationships are inferred ONLY from item_entity links (evidenced connections).
+ *   - Direct model relationships must carry verbatim evidence and pass the matrix.
+ *   - Event participation/location can also be derived from item_entity links.
  *   - Two entities co-occurring in the same sentence does NOT automatically
  *     create a relationship — spec §6, §8, §20.
  *   - Only relationships in the spec §4 Connection Matrix are created.
@@ -252,6 +253,38 @@ export function buildConnections(analysis: Analysis): ConnectionBuilderResult {
 
   const seenRelKeys = new Set<string>();
 
+  // Prefer the model's direct, evidence-grounded relationship suggestions.
+  // They have already been normalised against entity ids and source text; the
+  // matrix below is still the final authority on whether they are accepted.
+  for (const connection of analysis.connections ?? []) {
+    let sourceTempId = acceptedEntityTempIds.get(connection.source_entity_id);
+    let targetTempId = acceptedEntityTempIds.get(connection.target_entity_id);
+    if (!sourceTempId || !targetTempId || sourceTempId === targetTempId) continue;
+
+    let sourceType = acceptedTypeForEntity(connection.source_entity_id, entityV2Types);
+    let targetType = acceptedTypeForEntity(connection.target_entity_id, entityV2Types);
+    const relationshipType = connection.relationship_type.toLowerCase().trim();
+
+    // Models sometimes reverse a relationship despite the prompt. Reverse it
+    // only when the same typed relationship is valid in the other direction.
+    if (!isAllowedRelationship(sourceType, targetType, relationshipType)
+      && isAllowedRelationship(targetType, sourceType, relationshipType)) {
+      [sourceTempId, targetTempId] = [targetTempId, sourceTempId];
+      [sourceType, targetType] = [targetType, sourceType];
+    }
+
+    const relKey = `${sourceTempId}|${targetTempId}|${relationshipType}`;
+    if (seenRelKeys.has(relKey)) continue;
+    seenRelKeys.add(relKey);
+    rawRelationships.push({
+      sourceTempId,
+      targetTempId,
+      relationshipType,
+      confidence: connection.confidence,
+      evidence: connection.evidence,
+    });
+  }
+
   for (const item of analysis.items) {
     // Only relate entities to event objects (the only items that become nodes)
     if (!EVENT_ITEM_TYPES.has(item.type)) continue;
@@ -301,45 +334,6 @@ export function buildConnections(analysis: Analysis): ConnectionBuilderResult {
     }
   }
 
-  // --- Step 4b: Cross-entity relationships from item co-occurrence ----------
-  //
-  // When an item links both a PERSON and a PROJECT, that is strong evidence
-  // of a works_on relationship (spec §4: PERSON → PROJECT: works_on).
-  // Co-occurrence within the SAME item (not just same conversation) is
-  // acceptable because the item represents a single grounded fact.
-
-  for (const item of analysis.items) {
-    const personsInItem: string[] = [];
-    const projectsInItem: string[] = [];
-
-    for (const entityId of item.entity_ids) {
-      const kind = entityKinds.get(entityId);
-      const tempId = acceptedEntityTempIds.get(entityId);
-      if (!tempId) continue;
-      if (kind === 'PERSON') personsInItem.push(tempId);
-      if (kind === 'PROJECT') projectsInItem.push(tempId);
-    }
-
-    // person → works_on → project (spec §4)
-    if (personsInItem.length > 0 && projectsInItem.length > 0 && isAllowedRelationship('person', 'project', 'works_on')) {
-      for (const personTempId of personsInItem) {
-        for (const projectTempId of projectsInItem) {
-          const relKey = `${personTempId}|${projectTempId}|works_on`;
-          if (!seenRelKeys.has(relKey)) {
-            seenRelKeys.add(relKey);
-            rawRelationships.push({
-              sourceTempId: personTempId,
-              targetTempId: projectTempId,
-              relationshipType: 'works_on',
-              confidence: 0.65, // Co-occurrence in one item is moderate confidence
-              evidence: item.source_text || item.title,
-            });
-          }
-        }
-      }
-    }
-  }
-
   // Spec §16: "The BACKEND decides whether the relationship is allowed."
   const validRelationships: CandidateRelationship[] = [];
 
@@ -381,4 +375,8 @@ export function buildConnections(analysis: Analysis): ConnectionBuilderResult {
   }
 
   return { objects: validObjects, relationships: validRelationships, warnings };
+}
+
+function acceptedTypeForEntity(entityId: string, entityTypes: Map<string, string>): string {
+  return entityTypes.get(entityId) ?? 'other_entity';
 }

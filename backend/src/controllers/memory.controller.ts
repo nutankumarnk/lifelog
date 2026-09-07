@@ -14,10 +14,12 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from '../errors/app-error.js';
 import {
   MemoryObjectListQuerySchema,
+  MemoryGraphQuerySchema,
   type MemoryObjectListResponse,
   type MemoryObjectDetail,
   type ConversationObjects,
   type ObjectRelationshipApi,
+  type MemoryGraphResponse,
 } from '../schemas/api.schema.js';
 import type { MemoryService } from '../services/memory.service.js';
 import type { AnalysisRepository } from '../repositories/analysis.repository.js';
@@ -74,6 +76,47 @@ export class MemoryController {
         total: result.pagination.total,
         total_pages: result.pagination.totalPages,
       },
+    };
+  };
+
+  /** GET /api/v1/memory/graph — bounded graph snapshot for visualization. */
+  getGraph = async (
+    request: FastifyRequest,
+    reply: FastifyReply,
+  ): Promise<MemoryGraphResponse> => {
+    const parsed = MemoryGraphQuerySchema.safeParse(request.query);
+    if (!parsed.success) {
+      throw AppError.validation(parsed.error.issues.map((issue) => ({
+        path: issue.path.join('.') || 'query',
+        message: issue.message,
+      })));
+    }
+
+    const result = await this.service.getGraph(parsed.data.limit);
+    reply.code(200);
+    return {
+      objects: result.objects.map((obj) => ({
+        id: obj.id,
+        type: obj.type,
+        name: obj.name,
+        attributes: obj.attributes,
+        mention_count: obj.mentionCount,
+        first_seen_at: obj.firstSeenAt.toISOString(),
+        last_seen_at: obj.lastSeenAt.toISOString(),
+        created_at: obj.createdAt.toISOString(),
+        updated_at: obj.updatedAt.toISOString(),
+      })),
+      relationships: result.relationships.map((rel) => ({
+        id: rel.id,
+        source_object_id: rel.sourceObjectId,
+        target_object_id: rel.targetObjectId,
+        relationship_type: rel.relationshipType,
+        confidence: rel.confidence,
+        source_conversation_id: rel.sourceConversationId,
+        attributes: rel.attributes,
+        created_at: rel.createdAt.toISOString(),
+        updated_at: rel.updatedAt.toISOString(),
+      })),
     };
   };
 

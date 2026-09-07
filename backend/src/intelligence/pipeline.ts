@@ -21,6 +21,7 @@ import {
   ANALYSIS_SCHEMA_VERSION,
   type Analysis,
   type AnalysisGap,
+  type Connection,
   type EmotionalImpact,
   type Entity,
   type Intent,
@@ -45,6 +46,7 @@ import { HINGLISH_MARKERS, NON_LATIN_SCRIPT } from './lexicon.js';
 import {
   coerceIntent,
   normalizeEntities,
+  normalizeConnections,
   normalizeItems,
   normalizeJournal,
   normalizeMissingInformation,
@@ -57,6 +59,8 @@ export interface UnderstandRequest {
   text: string;
   now: Date;
   timezone: string | null;
+  /** Backwards-compatible client hint; timezone remains the temporal authority. */
+  locale?: string;
 }
 
 export interface UnderstandResult {
@@ -101,6 +105,7 @@ interface ProcessedDraft {
   journal: JournalEntry;
   entities: Entity[];
   items: Item[];
+  connections: Connection[];
   missingRaw: unknown;
   warnings: Warning[];
 }
@@ -128,6 +133,13 @@ function processRawExtraction(
 
   const normalizedItems = normalizeItems(raw.items, normalizedEntities.idMap);
   warnings.push(...normalizedItems.warnings);
+
+  const normalizedConnections = normalizeConnections(
+    raw.connections,
+    normalizedEntities.idMap,
+    text,
+  );
+  warnings.push(...normalizedConnections.warnings);
 
   const grounded = groundAnalysis(text, normalizedEntities.entities, normalizedItems.items);
   warnings.push(...grounded.warnings);
@@ -192,6 +204,7 @@ function processRawExtraction(
     journal,
     entities: grounded.entities,
     items,
+    connections: normalizedConnections.connections,
     missingRaw: raw.missing_information,
     warnings,
   };
@@ -234,6 +247,7 @@ function assembleCandidate(
       segments,
       entities: draft.entities,
       items: draft.items,
+      connections: draft.connections,
       emotional_impact: emotionalImpact,
       gaps,
       algorithm_confidence: algorithmConfidence,

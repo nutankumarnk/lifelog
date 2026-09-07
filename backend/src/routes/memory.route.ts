@@ -23,6 +23,7 @@ export async function registerMemoryRoutes(
   options: MemoryRoutesOptions,
 ): Promise<void> {
   app.get('/api/v1/memory/objects', options.controller.listObjects);
+  app.get('/api/v1/memory/graph', options.controller.getGraph);
   app.get('/api/v1/memory/objects/:id', options.controller.getObjectById);
   app.get('/api/v1/memory/objects/:id/relationships', options.controller.getObjectRelationships);
   app.get('/api/v1/memory/conversations/:id', options.controller.getConversationObjects);

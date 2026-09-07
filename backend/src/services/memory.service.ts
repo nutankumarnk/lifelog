@@ -67,6 +67,11 @@ export interface ConversationObjectsResult {
   relationships: RelationshipRow[];
 }
 
+export interface MemoryGraphResult {
+  objects: MemoryObjectRow[];
+  relationships: RelationshipRow[];
+}
+
 export interface MemoryServiceDeps {
   memory: MemoryRepository;
   logger?: {
@@ -355,6 +360,13 @@ export class MemoryService {
   /** Get all relationships for an object. */
   async getObjectRelationships(objectId: string): Promise<RelationshipRow[]> {
     return this.deps.memory.findRelationshipsByObject(objectId);
+  }
+
+  /** Return a bounded whole-graph snapshot for the Connection Map UI. */
+  async getGraph(limit: number): Promise<MemoryGraphResult> {
+    const objects = await this.deps.memory.listObjects({ page: 1, limit });
+    const relationships = await this.deps.memory.findRelationshipsBetween(objects.map((object) => object.id));
+    return { objects, relationships };
   }
 
   /** Get all memory objects originating from a conversation. */

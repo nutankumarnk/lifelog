@@ -7,7 +7,7 @@
  * Services call methods here; they never build queries, and they never see a
  * Drizzle type.
  */
-import { and, desc, eq, ilike, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, sql } from 'drizzle-orm';
 import type { Database } from '../db/client.js';
 import {
   memoryObjects,
@@ -396,6 +396,29 @@ export class MemoryRepository {
       .where(
         sql`${objectRelationships.sourceObjectId} = ${objectId} OR ${objectRelationships.targetObjectId} = ${objectId}`,
       )
+      .orderBy(desc(objectRelationships.updatedAt));
+  }
+
+  /** Find relationships whose two endpoints are both in the supplied graph. */
+  async findRelationshipsBetween(objectIds: string[]): Promise<RelationshipRow[]> {
+    if (objectIds.length === 0) return [];
+    return this.db
+      .select({
+        id: objectRelationships.id,
+        sourceObjectId: objectRelationships.sourceObjectId,
+        targetObjectId: objectRelationships.targetObjectId,
+        relationshipType: objectRelationships.relationshipType,
+        confidence: objectRelationships.confidence,
+        sourceConversationId: objectRelationships.sourceConversationId,
+        attributes: objectRelationships.attributes,
+        createdAt: objectRelationships.createdAt,
+        updatedAt: objectRelationships.updatedAt,
+      })
+      .from(objectRelationships)
+      .where(and(
+        inArray(objectRelationships.sourceObjectId, objectIds),
+        inArray(objectRelationships.targetObjectId, objectIds),
+      ))
       .orderBy(desc(objectRelationships.updatedAt));
   }
 }

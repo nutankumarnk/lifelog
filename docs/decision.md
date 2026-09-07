@@ -508,6 +508,39 @@ policy and a schema change rather than silently weakening deletion.
 
 ---
 
+## D-018 — Evidence-backed relational Connection Map
+
+**Date:** 2026-09-07 · **Status:** Accepted
+
+**Problem.** Users need to explore how recurring people, places, projects,
+organizations, events, and objects connect across journal entries. A graph based
+on raw co-occurrence would be visually impressive but would also claim
+relationships the user never stated.
+
+**Options considered.** Render all co-mentioned entities as direct edges; keep
+only explicit typed relationships; or mix direct and inferred links without a
+visual distinction. Use the existing custom canvas, Cytoscape.js, or a
+WebGL/Graphology stack.
+
+**Chosen:** the model emits direct relationships with verbatim evidence and
+confidence. The backend validates every relationship against a typed matrix.
+Shared neighbors remain indirect paths. The UI uses Sigma.js, Graphology, and a
+worker-based ForceAtlas2 layout over the existing PostgreSQL adjacency model.
+
+**Why.** This preserves the original journal as the authority, avoids fabricated
+social claims, and provides the dense interactive visual requested without
+requiring a graph database.
+
+**Trade-offs.** Conservative extraction will miss some plausible relationships.
+WebGL rendering is less flexible than DOM/SVG nodes, and entity resolution still
+uses exact normalized type/name matching.
+
+**Future impact.** Alias review, merge/split tooling, relationship history, and
+approved inferred insights can be added without changing the direct-edge
+semantics or the graph API.
+
+---
+
 ## Template for new entries
 
 ```

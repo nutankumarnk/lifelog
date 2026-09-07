@@ -186,13 +186,9 @@ export async function fetchMemoryObjectDetail(id: string, signal?: AbortSignal):
 }
 
 export async function fetchGraphData(signal?: AbortSignal): Promise<MemoryGraphData> {
-  const res = await fetch(`${BASE}/api/v1/memory/objects?limit=100`, { signal });
+  const res = await fetch(`${BASE}/api/v1/memory/graph?limit=500`, { signal });
   if (!res.ok) await parseError(res);
-  const data = (await res.json()) as { objects: MemoryObject[] };
-  return {
-    objects: data.objects || [],
-    edges: [],
-  };
+  return (await res.json()) as MemoryGraphData;
 }
 
 export async function updateNote(
